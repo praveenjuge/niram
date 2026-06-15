@@ -34,6 +34,22 @@ const FONT_STYLES = [
 // Inter ships with Figma, so it is always a safe fallback.
 export const FALLBACK_FAMILY = "Inter";
 
+// Figma's per-glyph substitution chain. When a text node carries a character
+// the bound family can't render (e.g. a "✕", "⌘", or even a stray "•" in a
+// preset font with sparse coverage), Figma silently renders that glyph from one
+// of these Noto fallbacks. The node's `fontName` still reads as the preset
+// family, but a re-run's `setValueForMode` on the bound `font-sans` variable
+// re-validates *every* face the node actually uses — and throws if a
+// substituted Noto face was never loaded. Component/block builders already
+// prefer vectors/icons over symbol glyphs, but presets vary, so we also load
+// these best-effort as a safety net before writing the font variable. Missing
+// families simply don't load (loadFontFamilies swallows the rejection).
+export const FALLBACK_GLYPH_FAMILIES = [
+  "Noto Sans",
+  "Noto Sans Symbols",
+  "Noto Sans Symbols2",
+] as const;
+
 function styleKey(family: string, style: string): string {
   return family + "\u0000" + style;
 }

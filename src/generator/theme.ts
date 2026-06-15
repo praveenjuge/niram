@@ -3,7 +3,7 @@
 // only supports a single mode per collection.
 
 import { findTailwindAlias, parseColor, type Rgba } from "../colors";
-import { loadFontFamilies } from "../fonts";
+import { FALLBACK_GLYPH_FAMILIES, loadFontFamilies } from "../fonts";
 import {
   resolveFonts,
   shadcnRadiusScale,
@@ -128,8 +128,14 @@ export async function ensureThemeCollection(
 
   // On a re-run these STRING variables may already be bound to text nodes from
   // a previous build. Figma rejects setValueForMode on a bound font variable
-  // unless the font is loaded, so load the families before writing the values.
-  await loadFontFamilies([fonts.body, fonts.heading]);
+  // unless every face those nodes use is loaded — including the Noto fallbacks
+  // Figma substitutes for glyphs the preset font can't render. Load the preset
+  // families plus the fallback glyph families before writing the values.
+  await loadFontFamilies([
+    fonts.body,
+    fonts.heading,
+    ...FALLBACK_GLYPH_FAMILIES,
+  ]);
 
   const bodyVar = await getOrCreateVariable(collection, "font-sans", "STRING");
   bodyVar.setValueForMode(modeId, fonts.body);
