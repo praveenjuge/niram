@@ -2,6 +2,7 @@
   "name": "niram",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "bun@1.3.14",
   "description": "Niram generates shadcn/ui design systems as Figma variables, styles, components, and blocks.",
   "workspaces": [
     "apps/*"
@@ -39,6 +40,7 @@
     "gen-icons": "bun --filter @niram/figma-plugin gen-icons",
     "web:dev": "bun --filter @niram/web dev",
     "web:build": "bun --filter @niram/web build",
+    "web:deploy": "bun run web:build && bun --filter @niram/web deploy",
     "web:preview": "bun --filter @niram/web preview",
     "web:typecheck": "bun --filter @niram/web typecheck"
   }

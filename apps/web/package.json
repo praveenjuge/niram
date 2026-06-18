@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite dev --port 3000",
     "build": "vite build",
+    "deploy": "wrangler deploy",
     "preview": "vite preview",
     "test": "vitest run",
     "lint": "eslint",
@@ -48,6 +49,7 @@
     "prettier-plugin-tailwindcss": "^0.8.0",
     "typescript": "^6",
     "vite": "^8",
-    "vitest": "^4"
+    "vitest": "^4",
+    "wrangler": "^4.101.0"
   }
 }
