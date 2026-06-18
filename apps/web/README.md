@@ -1,12 +1,12 @@
 # @niram/web
 
-The Niram website. A [TanStack Start](https://tanstack.com/start) (React +
-TypeScript) app styled with Tailwind CSS v4 and
-[shadcn/ui](https://ui.shadcn.com), scaffolded from the `b0` shadcn preset so
-it shares the same design language as the Figma plugin.
+The Niram website: a browsable catalog of evergreen shadcn blocks. Built with
+[TanStack Start](https://tanstack.com/start) (React + TypeScript) and styled
+with Tailwind CSS v4 and [shadcn/ui](https://ui.shadcn.com), so it shares the
+same design language as the [Figma plugin](../figma-plugin).
 
-It lives in the Niram Bun workspace monorepo alongside
-[`@niram/figma-plugin`](../figma-plugin).
+Part of the Niram Bun workspace monorepo. See the
+[root README](../../README.md) for an overview of both apps.
 
 ## Commands
 

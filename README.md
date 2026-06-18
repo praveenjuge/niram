@@ -1,88 +1,71 @@
 # Niram
 
-shadcn/ui design system generator for Figma
+shadcn/ui design system tooling.
 
-Niram is a Figma plugin that turns a [shadcn/ui](https://ui.shadcn.com)
-preset code into native Figma variables, styles, components, and app blocks.
+Niram turns [shadcn/ui](https://ui.shadcn.com) into ready-to-use design
+resources. This repo is a Bun workspace monorepo with two apps:
 
-[Install the Figma Community plugin](https://www.figma.com/community/plugin/1642487887236877076/niram-shadcn-design-system-generator).
+- **Figma plugin** (`apps/figma-plugin`) - paste a shadcn preset code and
+  generate native Figma variables, styles, components, and blocks.
+- **Website** (`apps/web`) - a browsable catalog of evergreen shadcn blocks,
+  built with TanStack Start and styled with shadcn/ui.
 
-Paste a preset code, generate once, and Niram builds the design-system
-surface around it:
+## Figma plugin
 
-- `Tailwind / Colors` with the Tailwind v4 OKLCH palette.
-- `Tailwind / Primitives` with radius, spacing, typography, opacity, border,
-  shadow, and blur tokens.
-- `shadcn / Theme` with light values plus `dark-*` twin variables for Figma
-  free-tier compatibility.
-- Tailwind typography text styles and shadow, inner shadow, blur, and backdrop
-  blur effect styles.
-- A single `Niram` page that hosts three regions: a Design System region for
-  colors, type, spacing, radii, effects, opacity, border widths, and icons; a
-  57-section Components region with forms, typography, data tables,
-  icon-backed controls, and common overlays; and a Blocks region with all five
-  shadcn login layouts, all five signup layouts, a shadcn-structured
-  dashboard, a Chart component set, and the 16-variant Sidebar set — the auth
-  and dashboard blocks assembled from generated component instances.
+[Install from the Figma Community](https://www.figma.com/community/plugin/1642487887236877076/niram-shadcn-design-system-generator).
+
+Paste a preset code, generate once, and Niram builds a full design-system
+surface on a single `Niram` page:
+
+- Tailwind v4 OKLCH colors, primitive tokens (radius, spacing, typography,
+  opacity, border, shadow, blur), and a light/dark `shadcn` theme.
+- Tailwind typography text styles and shadow, inner shadow, and blur effect
+  styles.
+- Three regions on the page: a Design System region, a Components region, and
+  a Blocks region (login, signup, dashboard, charts, and sidebar layouts built
+  from real component instances).
 
 Re-running with a different preset updates the same variables, styles, and
 page in place.
 
-## Usage
+**Usage**
 
-1. Build a preset at <https://ui.shadcn.com/create> and copy its code, such as
-   `b0` or `bAhk2P`.
-2. Run **Generate from preset...** in Figma, or use **Shuffle a random preset**.
+1. Build a preset at <https://ui.shadcn.com/create> and copy its code.
+2. Run **Generate from preset...** in Figma, or **Shuffle a random preset**.
 3. Paste the code and generate.
 
-## Privacy
+The plugin runs fully offline. It uses no network, analytics, or third-party
+services, and only writes to the file where you run it.
 
-Niram runs offline. `apps/figma-plugin/manifest.json` declares
-`networkAccess.allowedDomains: ["none"]`, so the plugin cannot make external
-network requests. It does not use analytics, telemetry, CDNs, or third-party
-services.
+## Website
 
-The plugin only writes to the file where you run it: the three variable
-collections, generated text/effect styles, and the single `Niram` page
-(Design System, Components, and Blocks regions).
+A catalog of shadcn blocks you can browse by category, sharing the same design
+language as the plugin. Routes are file-based under `apps/web/src/routes`.
 
 ## Development
 
-This repo is a Bun workspace monorepo with two apps under `apps/`:
-
-- `apps/figma-plugin` (`@niram/figma-plugin`) - the Figma plugin.
-- `apps/web` (`@niram/web`) - the Niram website, a TanStack Start (React) app
-  styled with Tailwind CSS v4 and shadcn/ui.
-
 Dependencies install in isolated (pnpm-style) mode via `bunfig.toml`, so each
-app keeps its own toolchain (the plugin pins Vite 5 through Vitest while the
-website uses TanStack Start's Vite 8).
-
-Work on the Figma plugin:
+app keeps its own toolchain.
 
 ```bash
 bun install
+```
+
+Figma plugin (default `bun run` scripts):
+
+```bash
+bun run build      # build to apps/figma-plugin/dist
+bun run watch      # rebuild on changes
 bun run typecheck
 bun run test
-bun run build
 ```
 
-Work on the website:
+Website:
 
 ```bash
-bun run web:dev        # start the TanStack Start dev server
-bun run web:build      # build client + SSR bundles to apps/web/dist
-bun run web:typecheck  # tsc --noEmit
-```
-
-Other useful plugin scripts:
-
-```bash
-bun run watch
-bun run test:coverage
-bun run extract-themes
-bun run gen-avatar-images
-bun run gen-icons
+bun run web:dev        # dev server on port 3000
+bun run web:build      # build to apps/web/dist
+bun run web:typecheck
 ```
 
 Load the plugin locally with **Plugins -> Development -> Import plugin from
@@ -91,9 +74,6 @@ manifest...** and select `apps/figma-plugin/manifest.json`.
 See [AGENTS.md](./AGENTS.md) for architecture, commands, and constraints.
 
 ## Support
-
-Install the plugin from
-<https://www.figma.com/community/plugin/1642487887236877076/niram-shadcn-design-system-generator>.
 
 Open issues at <https://github.com/praveenjuge/niram/issues>.
 
