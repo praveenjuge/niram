@@ -2,4 +2,6 @@ shadcn-ui/
 node_modules/
 dist/
 coverage/
+apps/*/dist/
+apps/*/coverage/
 .DS_Store

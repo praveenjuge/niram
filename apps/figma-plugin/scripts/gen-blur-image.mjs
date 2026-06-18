@@ -4,11 +4,11 @@
 // them at runtime with figma.base64Decode.
 //
 // Re-run only when you want a different image:
-//   node scripts/gen-blur-image.mjs
+//   bun scripts/gen-blur-image.mjs
 //
 // Override the source by passing a URL or a custom seed:
-//   node scripts/gen-blur-image.mjs https://example.com/foo.jpg
-//   NIRAM_BLUR_SEED=anything node scripts/gen-blur-image.mjs
+//   bun scripts/gen-blur-image.mjs https://example.com/foo.jpg
+//   NIRAM_BLUR_SEED=anything bun scripts/gen-blur-image.mjs
 
 import { writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

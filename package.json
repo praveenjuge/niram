@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "Niram generates shadcn/ui design systems as Figma variables, styles, components, and blocks.",
+  "workspaces": [
+    "apps/*"
+  ],
   "license": "MIT",
   "author": "Praveen Juge",
   "homepage": "https://www.figma.com/community/plugin/1642487887236877076/niram-shadcn-design-system-generator",
@@ -24,21 +27,15 @@
     "variables"
   ],
   "scripts": {
-    "build": "node scripts/build.mjs",
-    "dev": "node scripts/build.mjs --watch",
-    "watch": "node scripts/build.mjs --watch",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
-  },
-  "devDependencies": {
-    "@figma/plugin-typings": "^1.128.0",
-    "@vitest/coverage-v8": "^2.1.9",
-    "esbuild": "^0.24.0",
-    "quickjs-emscripten": "^0.32.0",
-    "sharp": "^0.34.5",
-    "typescript": "^5.5.4",
-    "vitest": "^2.1.9"
+    "build": "bun --filter @niram/figma-plugin build",
+    "dev": "bun --filter @niram/figma-plugin dev",
+    "watch": "bun --filter @niram/figma-plugin watch",
+    "typecheck": "bun --filter @niram/figma-plugin typecheck",
+    "test": "bun --filter @niram/figma-plugin test",
+    "test:watch": "bun --filter @niram/figma-plugin test:watch",
+    "test:coverage": "bun --filter @niram/figma-plugin test:coverage",
+    "extract-themes": "bun --filter @niram/figma-plugin extract-themes",
+    "gen-avatar-images": "bun --filter @niram/figma-plugin gen-avatar-images",
+    "gen-icons": "bun --filter @niram/figma-plugin gen-icons"
   }
 }

@@ -12,16 +12,16 @@ within Figma Starter/free page limits.
 
 Start with these files before changing behavior:
 
-1. `src/code.ts` - top-level generate flow and UI progress messages.
-2. `src/generator/index.ts` - variable collections, text styles, effect
+1. `apps/figma-plugin/src/code.ts` - top-level generate flow and UI progress messages.
+2. `apps/figma-plugin/src/generator/index.ts` - variable collections, text styles, effect
    styles, and font loading.
-3. `src/designSystem/index.ts` - Design System region sections and layout. This
+3. `apps/figma-plugin/src/designSystem/index.ts` - Design System region sections and layout. This
    builder owns the shared `Niram` page: it creates the page and, on a re-run,
    clears only the section frames it previously tagged.
-4. `src/componentsPage/index.ts` - component section registry, deferred
+4. `apps/figma-plugin/src/componentsPage/index.ts` - component section registry, deferred
    sections, and column layout. Appends the Components region beneath the
    Design System region on the same page.
-5. `src/blocksPage/index.ts` - login, signup, sidebar, and dashboard Blocks
+5. `apps/figma-plugin/src/blocksPage/index.ts` - login, signup, sidebar, and dashboard Blocks
    region appended to the right of the Components grid on the same page.
 
 Recent product surface to preserve:
@@ -41,62 +41,62 @@ Recent product surface to preserve:
   (https://ui.shadcn.com/charts) as variants keyed by `Family` (Area, Bar,
   Line, Pie, Radar, Radial) and `Variant` (the per-family pattern). It keeps
   ~4 visually-distinct patterns per family and ships a single resize-friendly
-  size (no `Size` variant). It lives in `src/blocksPage/blocks/chart/` (data +
+  size (no `Size` variant). It lives in `apps/figma-plugin/src/blocksPage/blocks/chart/` (data +
   sizes + renderers engine; the engine understands a superset of flags so
   trimmed variants can be re-added in data.ts). The dashboard block instances
   the Chart, so the Chart block builds before the dashboard.
 - The Sidebar is a Blocks region component set: one Figma component named
   "Sidebar" with all 16 shadcn sidebar block layouts
   (https://ui.shadcn.com/blocks/sidebar) as variants (Variant=sidebar-01 …
-  sidebar-16), each a fixed 982px tall. It lives in `src/blocksPage/blocks/
+  sidebar-16), each a fixed 982px tall. It lives in `apps/figma-plugin/src/blocksPage/blocks/
 sidebar/` (primitives + 16 variant builders), not as a Components section.
 - Blocks are not a separate page. They live as a region on the shared `Niram`
   page (to the right of the component grid) to stay within Figma Starter/free
   page limits and reuse live component instances.
 - The dashboard block should stay structurally close to shadcn's dashboard
   block patterns; avoid simplifying it into a static showcase.
-- `manifest.json` already has the published numeric plugin id. Do not restore
+- `apps/figma-plugin/manifest.json` already has the published numeric plugin id. Do not restore
   pre-submission publishing docs or placeholder-id instructions.
 
 ## Commands
 
 ```bash
-npm install
-npm run build      # one-shot esbuild -> dist/code.js + dist/ui.html
-npm run watch      # rebuild on changes
-npm run typecheck  # tsc --noEmit
-npm test           # vitest run
-npm run test:coverage  # vitest run --coverage (enforces thresholds)
-node scripts/extract-themes.mjs  # regenerate src/data/themes.json from shadcn-ui/
-node scripts/gen-avatar-images.mjs  # regenerate src/data/avatars.ts (avatar photos)
-node scripts/gen-icons.mjs  # regenerate src/data/icons.ts (shadcn icon-library subsets)
+bun install
+bun run build      # one-shot esbuild -> apps/figma-plugin/dist/code.js + apps/figma-plugin/dist/ui.html
+bun run watch      # rebuild on changes
+bun run typecheck  # tsc --noEmit in apps/figma-plugin
+bun run test       # vitest run in apps/figma-plugin
+bun run test:coverage  # vitest run --coverage (enforces thresholds)
+bun run extract-themes  # regenerate apps/figma-plugin/src/data/themes.json from shadcn-ui/
+bun run gen-avatar-images  # regenerate apps/figma-plugin/src/data/avatars.ts (avatar photos)
+bun run gen-icons  # regenerate apps/figma-plugin/src/data/icons.ts (shadcn icon-library subsets)
 ```
 
-After changes, run `npm run typecheck`, `npm test`, and `npm run build`. Tests
-live in `test/` (Vitest), mirroring `src/`; the Figma plugin API is faked by
-`test/figma-mock.ts` so the generator and page builders run under Node. There
+After changes, run `bun run typecheck`, `bun run test`, and `bun run build`. Tests
+live in `apps/figma-plugin/test/` (Vitest), mirroring `apps/figma-plugin/src/`; the Figma plugin API is faked by
+`apps/figma-plugin/test/figma-mock.ts` so the generator and page builders run under Bun. There
 is no linter. Load the plugin in Figma desktop via **Plugins → Development →
-Import plugin from manifest…** and pick `manifest.json`.
+Import plugin from manifest…** and pick `apps/figma-plugin/manifest.json`.
 
 ### Test layers
 
-- **Logic (most tests).** Import `src/*.ts` directly and assert against the
-  in-memory `test/figma-mock.ts`. `test/generator/idempotency.test.ts` adds
-  re-run / golden-tree coverage via `test/helpers/snapshot.ts`, which strips
+- **Logic (most tests).** Import `apps/figma-plugin/src/*.ts` directly and assert against the
+  in-memory `apps/figma-plugin/test/figma-mock.ts`. `apps/figma-plugin/test/generator/idempotency.test.ts` adds
+  re-run / golden-tree coverage via `apps/figma-plugin/test/helpers/snapshot.ts`, which strips
   non-deterministic IDs so snapshots stay stable.
-- **QuickJS sandbox (`test/quickjs/`).** Compiles `src/code.ts` with the
+- **QuickJS sandbox (`apps/figma-plugin/test/quickjs/`).** Compiles `apps/figma-plugin/src/code.ts` with the
   production esbuild downlevel flags and runs the bundle inside a real QuickJS
   engine (`quickjs-emscripten`), driving a `generate` message end to end. This
   guards the ES2017 / QuickJS hard constraint — modern syntax or builtins that
   slip past the downlevel step fail here, not in Figma. The sandbox esbuild
-  settings are shared via `scripts/esbuild-config.mjs` so the harness and the
-  production build can't drift. `test/figma-mock.ts` must stay free of any
+  settings are shared via `apps/figma-plugin/scripts/esbuild-config.mjs` so the harness and the
+  production build can't drift. `apps/figma-plugin/test/figma-mock.ts` must stay free of any
   `vitest` import (it is bundled into the VM); use its local `createSpy`.
 
 ## Layout
 
 ```
-src/
+apps/figma-plugin/src/
   code.ts            # plugin sandbox entry (figma.* APIs, QuickJS)
   ui.ts / ui.html    # iframe UI
   messages.ts        # sandbox ↔ UI message contract
@@ -116,22 +116,22 @@ src/
   data/themes.json   # snapshot of shadcn's apps/v4/registry/themes.ts
   data/avatars.ts    # base64 avatar photos (build-time fetch) for Avatar styles
   data/icons.ts      # shadcn icon-library subsets (build-time) for the Icons section
-scripts/
+apps/figma-plugin/scripts/
   build.mjs          # esbuild runner
   extract-themes.mjs # regenerates src/data/themes.json from shadcn-ui/
   gen-avatar-images.mjs # regenerates src/data/avatars.ts from pravatar.cc
   gen-icons.mjs      # regenerates src/data/icons.ts from the icon-library packages
-manifest.json        # Figma plugin manifest
+apps/figma-plugin/manifest.json        # Figma plugin manifest
 shadcn-ui/           # local clone, git-ignored, reference only
 ```
 
 ## Hard constraints
 
-- **Sandbox target is ES2017.** `src/code.ts` runs in Figma's QuickJS sandbox.
-  `scripts/build.mjs` already disables optional chaining, nullish coalescing,
+- **Sandbox target is ES2017.** `apps/figma-plugin/src/code.ts` runs in Figma's QuickJS sandbox.
+  `apps/figma-plugin/scripts/build.mjs` already disables optional chaining, nullish coalescing,
   and logical assignment via esbuild `supported`. Do not raise the target and
   do not assume modern syntax in sandbox code.
-- **No network.** `manifest.json` sets `networkAccess.allowedDomains: ["none"]`
+- **No network.** `apps/figma-plugin/manifest.json` sets `networkAccess.allowedDomains: ["none"]`
   and the iframe origin is `null`. Everything must work offline; do not add
   `fetch`, CDNs, or analytics.
 - **Idempotent generation.** Re-running with a different preset must reuse
@@ -141,7 +141,7 @@ shadcn-ui/           # local clone, git-ignored, reference only
   twin variables (Figma free tier is 1-mode only). Don't switch to multi-mode.
 - **Alias-first colors.** Theme colors that match a Tailwind OKLCH shade must
   be written as variable aliases, not literal colors. Use the matcher in
-  `src/colors/` rather than re-implementing the lookup.
+  `apps/figma-plugin/src/colors/` rather than re-implementing the lookup.
 - **Mirror shadcn behavior.** `preset.ts` and `registry.ts` mirror shadcn's
   `decodePreset` / `buildRegistryTheme` (chart-color overrides, menu-accent
   transform, radius override). Keep them in sync with `shadcn-ui/` when
@@ -167,14 +167,14 @@ shadcn-ui/           # local clone, git-ignored, reference only
 - Keep sandbox (`code.ts` and its imports) free of DOM APIs; keep UI (`ui.ts`)
   free of `figma.*` APIs. They communicate only through `messages.ts`.
 - Prefer editing the canonical builder for a surface instead of adding parallel
-  paths. Component work usually belongs in `src/componentsPage/sections/*`;
-  block work belongs in `src/blocksPage/blocks/*` plus shared helpers only
+  paths. Component work usually belongs in `apps/figma-plugin/src/componentsPage/sections/*`;
+  block work belongs in `apps/figma-plugin/src/blocksPage/blocks/*` plus shared helpers only
   when there is real reuse.
-- When adding a component section, register it in `src/componentsPage/index.ts`
-  and extend focused tests under `test/componentsPage/`.
-- When adding a block, keep it in `src/blocksPage/blocks/`, reuse generated
-  component instances where possible, and extend `test/blocksPage/`.
+- When adding a component section, register it in `apps/figma-plugin/src/componentsPage/index.ts`
+  and extend focused tests under `apps/figma-plugin/test/componentsPage/`.
+- When adding a block, keep it in `apps/figma-plugin/src/blocksPage/blocks/`, reuse generated
+  component instances where possible, and extend `apps/figma-plugin/test/blocksPage/`.
 - If a change touches sandbox compatibility, run or update
-  `test/quickjs/sandbox.test.ts`.
-- `dist/` is build output, do not hand-edit.
+  `apps/figma-plugin/test/quickjs/sandbox.test.ts`.
+- `apps/figma-plugin/dist/` is build output, do not hand-edit.
 - Conventional Commits for messages.

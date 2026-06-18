@@ -37,7 +37,7 @@ page in place.
 
 ## Privacy
 
-Niram runs offline. `manifest.json` declares
+Niram runs offline. `apps/figma-plugin/manifest.json` declares
 `networkAccess.allowedDomains: ["none"]`, so the plugin cannot make external
 network requests. It does not use analytics, telemetry, CDNs, or third-party
 services.
@@ -48,25 +48,29 @@ collections, generated text/effect styles, and the single `Niram` page
 
 ## Development
 
+This repo is a Bun workspace monorepo. The Figma plugin lives in
+`apps/figma-plugin`; future apps, including the website, should live under
+`apps/`.
+
 ```bash
-npm install
-npm run typecheck
-npm test
-npm run build
+bun install
+bun run typecheck
+bun run test
+bun run build
 ```
 
 Useful scripts:
 
 ```bash
-npm run watch
-npm run test:coverage
-node scripts/extract-themes.mjs
-node scripts/gen-avatar-images.mjs
-node scripts/gen-icons.mjs
+bun run watch
+bun run test:coverage
+bun run extract-themes
+bun run gen-avatar-images
+bun run gen-icons
 ```
 
 Load locally with **Plugins -> Development -> Import plugin from manifest...**
-and select `manifest.json`.
+and select `apps/figma-plugin/manifest.json`.
 
 See [AGENTS.md](./AGENTS.md) for architecture, commands, and constraints.
 

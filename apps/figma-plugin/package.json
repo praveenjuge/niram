@@ -1,0 +1,48 @@
+{
+  "name": "@niram/figma-plugin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Niram generates shadcn/ui design systems as Figma variables, styles, components, and blocks.",
+  "license": "MIT",
+  "author": "Praveen Juge",
+  "homepage": "https://www.figma.com/community/plugin/1642487887236877076/niram-shadcn-design-system-generator",
+  "bugs": {
+    "url": "https://github.com/praveenjuge/niram/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/praveenjuge/niram.git",
+    "directory": "apps/figma-plugin"
+  },
+  "keywords": [
+    "figma",
+    "figma-plugin",
+    "shadcn",
+    "shadcn-ui",
+    "design-system",
+    "design-tokens",
+    "tailwindcss",
+    "variables"
+  ],
+  "scripts": {
+    "build": "bun scripts/build.mjs",
+    "dev": "bun scripts/build.mjs --watch",
+    "watch": "bun scripts/build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "extract-themes": "bun scripts/extract-themes.mjs",
+    "gen-avatar-images": "bun scripts/gen-avatar-images.mjs",
+    "gen-icons": "bun scripts/gen-icons.mjs"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.128.0",
+    "@vitest/coverage-v8": "^2.1.9",
+    "esbuild": "^0.24.0",
+    "quickjs-emscripten": "^0.32.0",
+    "sharp": "^0.34.5",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.9"
+  }
+}

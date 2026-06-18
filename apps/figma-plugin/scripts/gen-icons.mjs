@@ -14,7 +14,7 @@
 // icon's inner markup in a tiny <svg> and feeds it to figma.createNodeFromSvg.
 //
 // Re-run when bumping the curated lists or the source icon packages:
-//   node scripts/gen-icons.mjs
+//   bun scripts/gen-icons.mjs
 //
 // Source packages are installed into a temp dir (not added to package.json)
 // the same way scripts/extract-themes.mjs builds shadcn's themes.ts offline.

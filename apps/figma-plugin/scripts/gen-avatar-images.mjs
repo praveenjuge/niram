@@ -8,7 +8,7 @@
 // src/componentsPage/avatarStyles.ts) that the Avatar component references.
 //
 // Re-run only when you want different faces:
-//   node scripts/gen-avatar-images.mjs
+//   bun scripts/gen-avatar-images.mjs
 //
 // Tunables (env):
 //   NIRAM_AVATAR_COUNT  how many avatars to fetch (default 20)
