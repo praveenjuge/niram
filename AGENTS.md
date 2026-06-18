@@ -8,6 +8,20 @@ single `Niram` page that hosts three regions: a Design System region, a
 Components region, and a Blocks region. Everything lives on one page to stay
 within Figma Starter/free page limits.
 
+This repo is a Bun workspace monorepo with two apps under `apps/`:
+
+- `apps/figma-plugin` (`@niram/figma-plugin`) - the Figma plugin. Everything
+  below describes this app unless stated otherwise.
+- `apps/web` (`@niram/web`) - the Niram website, an Astro + React app styled
+  with Tailwind CSS v4 and shadcn/ui (scaffolded from the `b0` shadcn preset).
+
+Dependencies install in isolated (pnpm-style) mode via the root `bunfig.toml`
+(`[install] linker = "isolated"`) so each app keeps its own toolchain. This is
+required: the plugin pins Vite 5 (through Vitest) while the website needs
+Vite 7 (through Astro), and hoisting would force a single, wrong Vite onto
+`@tailwindcss/vite`. The website also declares `vite` directly so that peer
+resolves to Vite 7. Don't switch the workspace back to hoisted installs.
+
 ## Agent startup
 
 Start with these files before changing behavior:
@@ -60,6 +74,9 @@ sidebar/` (primitives + 16 variant builders), not as a Components section.
 
 ## Commands
 
+The default `bun run <script>` commands target the Figma plugin
+(`@niram/figma-plugin`):
+
 ```bash
 bun install
 bun run build      # one-shot esbuild -> apps/figma-plugin/dist/code.js + apps/figma-plugin/dist/ui.html
@@ -70,6 +87,15 @@ bun run test:coverage  # vitest run --coverage (enforces thresholds)
 bun run extract-themes  # regenerate apps/figma-plugin/src/data/themes.json from shadcn-ui/
 bun run gen-avatar-images  # regenerate apps/figma-plugin/src/data/avatars.ts (avatar photos)
 bun run gen-icons  # regenerate apps/figma-plugin/src/data/icons.ts (shadcn icon-library subsets)
+```
+
+Website (`@niram/web`) scripts, run from the repo root:
+
+```bash
+bun run web:dev        # astro dev server
+bun run web:build      # astro build -> apps/web/dist
+bun run web:preview    # preview the production build
+bun run web:typecheck  # astro check
 ```
 
 After changes, run `bun run typecheck`, `bun run test`, and `bun run build`. Tests
@@ -122,6 +148,12 @@ apps/figma-plugin/scripts/
   gen-avatar-images.mjs # regenerates src/data/avatars.ts from pravatar.cc
   gen-icons.mjs      # regenerates src/data/icons.ts from the icon-library packages
 apps/figma-plugin/manifest.json        # Figma plugin manifest
+apps/web/            # @niram/web - Astro + React + Tailwind v4 + shadcn website
+  src/pages/         # Astro pages
+  src/components/ui/ # shadcn/ui components
+  src/styles/        # global.css (Tailwind v4 + theme tokens)
+  components.json    # shadcn CLI config (radix-nova style)
+bunfig.toml          # Bun config: isolated (pnpm-style) workspace installs
 shadcn-ui/           # local clone, git-ignored, reference only
 ```
 

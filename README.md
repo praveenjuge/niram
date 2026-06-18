@@ -48,9 +48,17 @@ collections, generated text/effect styles, and the single `Niram` page
 
 ## Development
 
-This repo is a Bun workspace monorepo. The Figma plugin lives in
-`apps/figma-plugin`; future apps, including the website, should live under
-`apps/`.
+This repo is a Bun workspace monorepo with two apps under `apps/`:
+
+- `apps/figma-plugin` (`@niram/figma-plugin`) - the Figma plugin.
+- `apps/web` (`@niram/web`) - the Niram website, an Astro + React app styled
+  with Tailwind CSS v4 and shadcn/ui.
+
+Dependencies install in isolated (pnpm-style) mode via `bunfig.toml`, so each
+app keeps its own toolchain (the plugin pins Vite 5 through Vitest while the
+website uses Astro's Vite 7).
+
+Work on the Figma plugin:
 
 ```bash
 bun install
@@ -59,7 +67,15 @@ bun run test
 bun run build
 ```
 
-Useful scripts:
+Work on the website:
+
+```bash
+bun run web:dev        # start the Astro dev server
+bun run web:build      # build the static site to apps/web/dist
+bun run web:typecheck  # astro check
+```
+
+Other useful plugin scripts:
 
 ```bash
 bun run watch
@@ -69,8 +85,8 @@ bun run gen-avatar-images
 bun run gen-icons
 ```
 
-Load locally with **Plugins -> Development -> Import plugin from manifest...**
-and select `apps/figma-plugin/manifest.json`.
+Load the plugin locally with **Plugins -> Development -> Import plugin from
+manifest...** and select `apps/figma-plugin/manifest.json`.
 
 See [AGENTS.md](./AGENTS.md) for architecture, commands, and constraints.
 

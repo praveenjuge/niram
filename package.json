@@ -36,6 +36,10 @@
     "test:coverage": "bun --filter @niram/figma-plugin test:coverage",
     "extract-themes": "bun --filter @niram/figma-plugin extract-themes",
     "gen-avatar-images": "bun --filter @niram/figma-plugin gen-avatar-images",
-    "gen-icons": "bun --filter @niram/figma-plugin gen-icons"
+    "gen-icons": "bun --filter @niram/figma-plugin gen-icons",
+    "web:dev": "bun --filter @niram/web dev",
+    "web:build": "bun --filter @niram/web build",
+    "web:preview": "bun --filter @niram/web preview",
+    "web:typecheck": "bun --filter @niram/web typecheck"
   }
 }
