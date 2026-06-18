@@ -51,12 +51,12 @@ collections, generated text/effect styles, and the single `Niram` page
 This repo is a Bun workspace monorepo with two apps under `apps/`:
 
 - `apps/figma-plugin` (`@niram/figma-plugin`) - the Figma plugin.
-- `apps/web` (`@niram/web`) - the Niram website, an Astro + React app styled
-  with Tailwind CSS v4 and shadcn/ui.
+- `apps/web` (`@niram/web`) - the Niram website, a TanStack Start (React) app
+  styled with Tailwind CSS v4 and shadcn/ui.
 
 Dependencies install in isolated (pnpm-style) mode via `bunfig.toml`, so each
 app keeps its own toolchain (the plugin pins Vite 5 through Vitest while the
-website uses Astro's Vite 7).
+website uses TanStack Start's Vite 8).
 
 Work on the Figma plugin:
 
@@ -70,9 +70,9 @@ bun run build
 Work on the website:
 
 ```bash
-bun run web:dev        # start the Astro dev server
-bun run web:build      # build the static site to apps/web/dist
-bun run web:typecheck  # astro check
+bun run web:dev        # start the TanStack Start dev server
+bun run web:build      # build client + SSR bundles to apps/web/dist
+bun run web:typecheck  # tsc --noEmit
 ```
 
 Other useful plugin scripts:

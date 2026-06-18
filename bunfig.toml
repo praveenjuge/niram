@@ -1,6 +1,7 @@
 [install]
 # Use pnpm-style isolated installs so each workspace resolves only its own
 # declared dependencies. The figma-plugin pins vite 5 (via vitest 2) while the
-# web app needs vite 7 (via astro 6); hoisting would force a single, wrong vite
-# onto @tailwindcss/vite. Isolation keeps each app's toolchain self-contained.
+# web app needs vite 8 (via TanStack Start); hoisting would force a single,
+# wrong vite onto @tailwindcss/vite. Isolation keeps each app's toolchain
+# self-contained.
 linker = "isolated"
