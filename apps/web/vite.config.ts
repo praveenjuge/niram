@@ -10,11 +10,10 @@ const config = defineConfig({
     devtools(),
     tailwindcss(),
     tanstackStart({
-      spa: {
+      prerender: {
         enabled: true,
-        prerender: {
-          outputPath: "/index.html",
-        },
+        crawlLinks: true,
+        failOnError: true,
       },
     }),
     viteReact(),
