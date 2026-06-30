@@ -8,18 +8,23 @@ import type { PluginToUi, UiToPlugin } from "./messages";
 
 const input = document.getElementById("preset") as HTMLInputElement;
 const generateButton = document.getElementById("generate") as HTMLButtonElement;
+const generateLabel = generateButton.querySelector(
+  ".btn-label",
+) as HTMLSpanElement;
+const generateFill = generateButton.querySelector(
+  ".btn-fill",
+) as HTMLSpanElement;
 const confirmReplaceButton = document.getElementById(
   "confirm-replace",
 ) as HTMLButtonElement;
 const confirmCancelButton = document.getElementById(
   "confirm-cancel",
 ) as HTMLButtonElement;
-const shuffleButton = document.getElementById("shuffle") as HTMLButtonElement;
-const status = document.getElementById("status") as HTMLSpanElement;
-const meta = document.getElementById("meta") as HTMLSpanElement;
-const progress = document.getElementById("progress") as HTMLDivElement;
-const progressBar = progress.querySelector(".bar") as HTMLSpanElement;
+const status = document.getElementById("status") as HTMLParagraphElement;
 const presetsList = document.getElementById("presets-list") as HTMLDivElement;
+
+// Created in renderPopularPresets, kept for direct shuffle triggering.
+let shuffleButton: HTMLButtonElement;
 
 let busy = false;
 // The preset code awaiting a "replace everything" confirmation. Set when the
@@ -30,68 +35,74 @@ function postToPlugin(message: UiToPlugin) {
   parent.postMessage({ pluginMessage: message }, "*");
 }
 
+// Status is shown only when there is something worth saying (error, done,
+// confirm prompt). Working progress lives in the Generate button instead.
 function setStatus(text: string, variant: "info" | "error" | "done" = "info") {
   status.textContent = text;
+  status.hidden = text === "";
   status.classList.toggle("error", variant === "error");
   status.classList.toggle("done", variant === "done");
-}
-
-function setMeta(text: string) {
-  meta.textContent = text;
 }
 
 function formatCount(value: number): string {
   return value.toLocaleString();
 }
 
-// Drive the bar + meta from a progress message: determinate percent when
-// available, otherwise the indeterminate stripe.
-function updateProgress(message: Extract<PluginToUi, { type: "progress" }>) {
-  progress.classList.add("visible");
-  setStatus(message.detail ?? message.message);
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, value));
+}
 
-  setMeta(typeof message.percent === "number" ? `${message.percent}%` : "");
-
-  if (typeof message.percent === "number") {
-    progress.classList.remove("indeterminate");
-    progressBar.style.width = `${Math.max(0, Math.min(100, message.percent))}%`;
+// Turn the Generate button into the progress indicator: a determinate fill
+// when a percent is known, otherwise an indeterminate sliding stripe.
+function setButtonProgress(percent: number | undefined, label: string) {
+  generateButton.classList.add("working");
+  generateLabel.textContent = label;
+  if (typeof percent === "number") {
+    generateButton.classList.remove("indeterminate");
+    generateFill.style.width = `${clampPercent(percent)}%`;
   } else {
-    progress.classList.add("indeterminate");
-    progressBar.style.width = "";
+    generateButton.classList.add("indeterminate");
+    generateFill.style.width = "";
   }
 }
 
-function startProgress(presetCode: string) {
-  setStatus(`Working on it (${presetCode})…`);
-  setMeta("");
-  progress.classList.add("visible", "indeterminate");
-  progressBar.style.width = "";
+// Drive the button from a progress message: keep the percent in the label and
+// the fill width; fall back to the detail/message text when no percent yet.
+function updateProgress(message: Extract<PluginToUi, { type: "progress" }>) {
+  const detail = message.detail ?? message.message;
+  const label =
+    typeof message.percent === "number"
+      ? `${detail} · ${message.percent}%`
+      : detail;
+  setButtonProgress(message.percent, label);
+}
+
+function startProgress() {
+  setStatus("");
+  setButtonProgress(undefined, "Working…");
 }
 
 function finishProgress() {
-  progress.classList.remove("indeterminate");
-  progressBar.style.width = "100%";
+  generateButton.classList.remove("indeterminate");
+  generateFill.style.width = "100%";
   setTimeout(() => {
-    progress.classList.remove("visible");
-    progressBar.style.width = "0%";
+    resetProgress();
   }, 600);
 }
 
 function resetProgress() {
-  setMeta("");
-  progress.classList.remove("visible", "indeterminate");
-  progressBar.style.width = "0%";
+  generateButton.classList.remove("working", "indeterminate");
+  generateFill.style.width = "0%";
+  generateLabel.textContent = "Generate";
 }
 
 function syncGenerateButton() {
   if (busy) {
     generateButton.disabled = true;
-    shuffleButton.disabled = true;
     setPresetButtonsDisabled(true);
     return;
   }
   generateButton.disabled = extractPresetCode(input.value) === null;
-  shuffleButton.disabled = false;
   setPresetButtonsDisabled(false);
 }
 
@@ -110,7 +121,7 @@ function runPreset(presetCode: string, confirmReplace = false) {
   // destructive replace; the confirm button resends exactly this code.
   pendingPresetCode = presetCode;
   syncGenerateButton();
-  startProgress(presetCode);
+  startProgress();
   postToPlugin({ type: "generate", presetCode, confirmReplace });
 }
 
@@ -122,6 +133,18 @@ function setConfirmVisible(visible: boolean) {
 }
 
 function renderPopularPresets() {
+  // Shuffle is the leading chip in the row.
+  shuffleButton = document.createElement("button");
+  shuffleButton.type = "button";
+  shuffleButton.className = "preset-badge shuffle";
+  shuffleButton.title = "Import a random resolvable preset";
+  shuffleButton.setAttribute("aria-label", "Shuffle a random preset");
+  shuffleButton.textContent = "Shuffle";
+  shuffleButton.addEventListener("click", () => {
+    runShuffle();
+  });
+  presetsList.appendChild(shuffleButton);
+
   for (const preset of POPULAR_PRESETS) {
     const button = document.createElement("button");
     button.type = "button";
@@ -156,10 +179,6 @@ generateButton.addEventListener("click", () => {
     return;
   }
   runPreset(presetCode);
-});
-
-shuffleButton.addEventListener("click", () => {
-  runShuffle();
 });
 
 confirmReplaceButton.addEventListener("click", () => {
@@ -206,10 +225,10 @@ window.addEventListener("message", (event: MessageEvent) => {
   }
 
   if (message.type === "awaiting-confirmation") {
-    // Niram exists. Stop the indeterminate stripe and swap the Generate button
-    // for the inline replace prompt. Stay busy so shuffle/preset chips can't
-    // fire while the prompt is up; `pendingPresetCode` already holds the code
-    // the confirm button will resend.
+    // Niram exists. Stop the progress fill and swap the Generate button for the
+    // inline replace prompt. Stay busy so shuffle/preset chips can't fire while
+    // the prompt is up; `pendingPresetCode` already holds the code the confirm
+    // button will resend.
     setStatus(message.message);
     resetProgress();
     setConfirmVisible(true);
@@ -238,7 +257,6 @@ window.addEventListener("message", (event: MessageEvent) => {
       `Done · ${formatCount(variables)} variables · ${formatCount(nodes)} nodes`,
       "done",
     );
-    setMeta("");
     finishProgress();
     syncGenerateButton();
     return;

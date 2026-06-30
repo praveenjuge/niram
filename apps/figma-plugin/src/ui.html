@@ -15,10 +15,11 @@
         --border: var(--figma-color-border, #e6e6e6);
         --border-strong: var(--figma-color-border-strong, #cdcdcd);
         --accent: var(--figma-color-bg-brand, #0d99ff);
+        --accent-pressed: var(--figma-color-bg-brand-pressed, #0a6dc2);
         --accent-fg: var(--figma-color-text-onbrand, #ffffff);
-        --danger: var(--figma-color-text-danger, #e03e3e);
         --danger-bg: var(--figma-color-bg-danger, #e03e3e);
         --danger-fg: var(--figma-color-text-ondanger, #ffffff);
+        --danger: var(--figma-color-text-danger, #e03e3e);
       }
       * {
         box-sizing: border-box;
@@ -89,51 +90,7 @@
         color: var(--muted);
       }
 
-      /* Section blocks */
-      .field {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      .field-label {
-        color: var(--muted);
-        font-weight: 500;
-      }
-      .field-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-
-      /* Icon button (shuffle) */
-      .icon-button {
-        appearance: none;
-        height: 22px;
-        padding: 0 8px;
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        border: 1px solid var(--border);
-        border-radius: 5px;
-        background: var(--bg);
-        color: var(--fg);
-        font: inherit;
-        font-weight: 500;
-        cursor: pointer;
-        transition:
-          background 80ms ease,
-          border-color 80ms ease;
-      }
-      .icon-button:hover:not(:disabled) {
-        background: var(--bg-hover);
-        border-color: var(--border-strong);
-      }
-      .icon-button:disabled {
-        opacity: 0.4;
-        cursor: default;
-      }
-
-      /* Preset chips */
+      /* Preset chips (shuffle is the trailing chip) */
       .presets-list {
         display: flex;
         flex-wrap: wrap;
@@ -165,6 +122,9 @@
         opacity: 0.4;
         cursor: default;
       }
+      .preset-badge.shuffle {
+        border-style: dashed;
+      }
 
       /* Footer / actions */
       footer {
@@ -173,14 +133,8 @@
         flex-direction: column;
         gap: 8px;
       }
-      .status-row {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        gap: 8px;
-        min-height: 16px;
-      }
       .status {
+        margin: 0;
         color: var(--muted);
         word-break: break-word;
       }
@@ -190,72 +144,16 @@
       .status.done {
         color: var(--fg);
       }
-      .meta {
-        color: var(--muted);
-        font-variant-numeric: tabular-nums;
-        white-space: nowrap;
-      }
-      .progress {
-        position: relative;
-        height: 3px;
-        background: var(--bg-secondary);
-        border-radius: 999px;
-        overflow: hidden;
-        opacity: 0;
-        transition: opacity 120ms ease;
-      }
-      .progress.visible {
-        opacity: 1;
-      }
-      .progress > .bar {
-        position: relative;
-        display: block;
-        height: 100%;
-        width: 0%;
-        background: var(--accent);
-        border-radius: inherit;
-        overflow: hidden;
-        transition: width 200ms ease;
-      }
-      /* Always-moving shimmer over the determinate fill so the bar shows
-         continuous activity even while the percent sits between updates. */
-      .progress.visible:not(.indeterminate) > .bar::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(
-          90deg,
-          transparent,
-          rgba(255, 255, 255, 0.55),
-          transparent
-        );
-        animation: shimmer 1.1s ease-in-out infinite;
-      }
-      @keyframes shimmer {
-        0% {
-          transform: translateX(-100%);
-        }
-        100% {
-          transform: translateX(100%);
-        }
-      }
-      .progress.indeterminate > .bar {
-        width: 35%;
-        animation: indeterminate 1.1s ease-in-out infinite;
-      }
-      @keyframes indeterminate {
-        0% {
-          transform: translateX(-100%);
-        }
-        100% {
-          transform: translateX(300%);
-        }
+      .status[hidden] {
+        display: none;
       }
       .actions {
         display: flex;
         gap: 8px;
       }
       button.btn {
+        position: relative;
+        overflow: hidden;
         appearance: none;
         height: 32px;
         padding: 0 14px;
@@ -282,8 +180,15 @@
         background: var(--accent);
       }
       button.btn.primary:disabled {
-        opacity: 0.4;
         cursor: default;
+      }
+      button.btn.primary:disabled:not(.working) {
+        opacity: 0.4;
+      }
+      /* While working the primary button doubles as the progress track:
+         the dim pressed-brand sits under a brighter accent fill. */
+      button.btn.primary.working {
+        background: var(--accent-pressed);
       }
       button.btn.primary.danger {
         background: var(--danger-bg);
@@ -296,6 +201,65 @@
       }
       button.btn[hidden] {
         display: none;
+      }
+      .btn-fill {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 0%;
+        background: var(--accent);
+        opacity: 0;
+        transition:
+          width 200ms ease,
+          opacity 120ms ease;
+        pointer-events: none;
+      }
+      button.btn.primary.working .btn-fill {
+        opacity: 1;
+      }
+      /* Determinate fill keeps a moving shimmer so activity reads as live
+         even when the percent sits still between updates. */
+      button.btn.primary.working:not(.indeterminate) .btn-fill::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(255, 255, 255, 0.45),
+          transparent
+        );
+        animation: shimmer 1.1s ease-in-out infinite;
+      }
+      button.btn.primary.working.indeterminate .btn-fill {
+        width: 35%;
+        animation: indeterminate 1.1s ease-in-out infinite;
+      }
+      .btn-label {
+        position: relative;
+        z-index: 1;
+        display: block;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      @keyframes shimmer {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(100%);
+        }
+      }
+      @keyframes indeterminate {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(300%);
+        }
       }
 
       a {
@@ -330,27 +294,14 @@
         />
       </div>
 
-      <div class="field" id="presets">
-        <div class="field-head">
-          <span class="field-label">Presets</span>
-          <button id="shuffle" type="button" class="icon-button">
-            🎲 Shuffle
-          </button>
-        </div>
-        <div class="presets-list" id="presets-list"></div>
-      </div>
+      <div class="presets-list" id="presets-list"></div>
 
       <footer>
-        <div class="status-row">
-          <span id="status" class="status"></span>
-          <span id="meta" class="meta"></span>
-        </div>
-        <div id="progress" class="progress" aria-hidden="true">
-          <span class="bar"></span>
-        </div>
+        <p id="status" class="status" hidden></p>
         <div class="actions">
           <button id="generate" class="btn primary" type="button" disabled>
-            Generate
+            <span class="btn-fill"></span>
+            <span class="btn-label">Generate</span>
           </button>
           <button id="confirm-cancel" class="btn" type="button" hidden>
             Cancel
