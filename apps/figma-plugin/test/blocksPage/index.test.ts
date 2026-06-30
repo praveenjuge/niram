@@ -66,9 +66,9 @@ describe("buildBlocksRegion", () => {
 
     const after = (inputs.targetPage as unknown as { children: unknown[] })
       .children.length;
-    // Header + 13 blocks (5 Login variants, 5 Signup variants, Chart,
-    // Dashboard, Sidebar) add 14 top-level frames.
-    expect(after - before).toBe(14);
+    // Header + 14 blocks (5 Login variants, 5 Signup variants, Chart,
+    // Dashboard, Chat, Sidebar) add 15 top-level frames.
+    expect(after - before).toBe(15);
   });
 
   it("does not create a new page (Starter tier 3-page cap)", async () => {
@@ -103,10 +103,10 @@ describe("buildBlocksRegion", () => {
     expect(phases).toContain("binding");
     expect(phases).toContain("layout");
 
-    // Header + 13 blocks step the build phase, plus a final "Done" step.
+    // Header + 14 blocks step the build phase, plus a final "Done" step.
     const building = events.filter((e) => e.phase === "building");
-    expect(building.length).toBe(15);
-    expect(building.at(-1)).toMatchObject({ current: 14, total: 14 });
+    expect(building.length).toBe(16);
+    expect(building.at(-1)).toMatchObject({ current: 15, total: 15 });
     const lastBinding = events.filter((e) => e.phase === "binding").at(-1)!;
     expect(lastBinding.current).toBe(lastBinding.total);
   });
@@ -220,7 +220,7 @@ describe("buildBlocksRegion", () => {
     const children = (
       barePage as unknown as { children: (SceneNode & { x: number })[] }
     ).children;
-    expect(children.length).toBe(14);
+    expect(children.length).toBe(15);
     // Every block starts at x >= 0, and at least one anchors the left column.
     for (const node of children) expect(node.x).toBeGreaterThanOrEqual(0);
     expect(children.some((node) => node.x === 0)).toBe(true);

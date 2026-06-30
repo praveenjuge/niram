@@ -114,6 +114,16 @@ export type LoadFontsOptions = {
 // Load every weight of the given families, returning the set of
 // "family\u0000style" pairs that actually loaded on this host. Loads are
 // best-effort: a missing family/weight is simply absent from the result.
+//
+// Each family is loaded by its *actual* installed style names (via
+// `listAvailableFontsAsync`), not a fixed list of guessed weight names. This
+// matters because a font's style names vary — Geist exposes "SemiBold" where
+// our reference list says "Semi Bold" — and a later `setValueForMode` on a
+// bound font variable re-validates *every* face the existing text nodes use
+// (including faces Figma substituted for a glyph the requested weight lacked).
+// If such a face was never loaded, that call throws "unloaded font". Loading a
+// family's real styles guarantees they're all present. Falls back to the fixed
+// weight list when the host can't enumerate fonts (older hosts / the test mock).
 export async function loadFontFamilies(
   families: string[],
 ): Promise<Set<string>> {
@@ -124,9 +134,14 @@ export async function loadFontFamilies(
     if (family && unique.indexOf(family) === -1) unique.push(family);
   }
 
+  const stylesByFamily = await availableStylesByFamily(unique);
+
   const attempts: Promise<void>[] = [];
   for (const family of unique) {
-    for (const style of FONT_STYLES) {
+    const actual = stylesByFamily.get(family);
+    const styleList: ReadonlyArray<string> =
+      actual && actual.length > 0 ? actual : FONT_STYLES;
+    for (const style of styleList) {
       attempts.push(
         figma.loadFontAsync({ family, style }).then(
           function () {
@@ -141,6 +156,44 @@ export async function loadFontFamilies(
   }
   await Promise.all(attempts);
   return loaded;
+}
+
+// Map each requested family to the exact style names installed on this host,
+// via `figma.listAvailableFontsAsync`. Returns an empty map when the host can't
+// enumerate fonts (older hosts / the test mock) so callers fall back to the
+// fixed weight list.
+async function availableStylesByFamily(
+  families: string[],
+): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>();
+  const lister = (
+    figma as unknown as {
+      listAvailableFontsAsync?: () => Promise<Array<{ fontName: FontName }>>;
+    }
+  ).listAvailableFontsAsync;
+  if (typeof lister !== "function") return map;
+
+  let available: Array<{ fontName: FontName }>;
+  try {
+    available = await lister.call(figma);
+  } catch {
+    return map;
+  }
+
+  const wanted = new Set(families);
+  for (const entry of available) {
+    const family = entry.fontName.family;
+    if (!wanted.has(family)) continue;
+    const list = map.get(family);
+    if (list) {
+      if (list.indexOf(entry.fontName.style) === -1) {
+        list.push(entry.fontName.style);
+      }
+    } else {
+      map.set(family, [entry.fontName.style]);
+    }
+  }
+  return map;
 }
 
 // Load the preset fonts (plus the Inter fallback) across all weights and make

@@ -48,6 +48,36 @@ describe("loadFontFamilies", () => {
       (figma as unknown as { loadFontAsync: unknown }).loadFontAsync = original;
     }
   });
+
+  it("loads a family's actual installed styles (e.g. Geist 'SemiBold')", async () => {
+    // A font's real style names can differ from the fixed weight list ("Semi
+    // Bold" vs Geist's "SemiBold"). When the host can enumerate fonts, every
+    // real face must load so a later setValueForMode re-validation never hits
+    // an unloaded face. Stub the enumeration to return Geist's actual styles.
+    const figmaAny = figma as unknown as {
+      listAvailableFontsAsync?: unknown;
+    };
+    figmaAny.listAvailableFontsAsync = () =>
+      Promise.resolve([
+        { fontName: { family: "Geist", style: "Regular" } },
+        { fontName: { family: "Geist", style: "SemiBold" } },
+        // A different family's face must not leak into Geist's load set.
+        { fontName: { family: "Lora", style: "Bold" } },
+      ]);
+    try {
+      const loaded = await loadFontFamilies(["Geist"]);
+      // The no-space "SemiBold" face loads (the fixed list's "Semi Bold" would
+      // have missed it, leaving the face unloaded).
+      expect(loaded.has("Geist\u0000SemiBold")).toBe(true);
+      expect(loaded.has("Geist\u0000Regular")).toBe(true);
+      // The fixed list's guessed weight name is not requested for Geist here.
+      expect(loaded.has("Geist\u0000Semi Bold")).toBe(false);
+      // Another family's faces are not attributed to Geist.
+      expect(loaded.has("Geist\u0000Bold")).toBe(false);
+    } finally {
+      delete figmaAny.listAvailableFontsAsync;
+    }
+  });
 });
 
 describe("setActiveFonts", () => {

@@ -11,9 +11,11 @@ import { addAccordionSection } from "./sections/accordion";
 import { addAlertSection } from "./sections/alert";
 import { addAlertDialogSection } from "./sections/alertDialog";
 import { addAspectRatioSection } from "./sections/aspectRatio";
+import { addAttachmentSection } from "./sections/attachment";
 import { addAvatarSection } from "./sections/avatar";
 import { addBadgeSection } from "./sections/badge";
 import { addBreadcrumbSection } from "./sections/breadcrumb";
+import { addBubbleSection } from "./sections/bubble";
 import { addButtonSection } from "./sections/button";
 import { addButtonGroupSection } from "./sections/buttonGroup";
 import { addCalendarSection } from "./sections/calendar";
@@ -40,7 +42,9 @@ import { addInputOtpSection } from "./sections/inputOtp";
 import { addItemSection } from "./sections/item";
 import { addKbdSection } from "./sections/kbd";
 import { addLabelSection } from "./sections/label";
+import { addMarkerSection } from "./sections/marker";
 import { addMenubarSection } from "./sections/menubar";
+import { addMessageSection } from "./sections/message";
 import { addNativeSelectSection } from "./sections/nativeSelect";
 import { addNavigationMenuSection } from "./sections/navigationMenu";
 import { addPaginationSection } from "./sections/pagination";
@@ -102,9 +106,11 @@ const SECTIONS: SectionBuilder[] = [
   { label: "Alert", build: addAlertSection },
   { label: "Alert Dialog", build: addAlertDialogSection },
   { label: "Aspect Ratio", build: addAspectRatioSection },
+  { label: "Attachment", build: addAttachmentSection },
   { label: "Avatar", build: addAvatarSection },
   { label: "Badge", build: addBadgeSection },
   { label: "Breadcrumb", build: addBreadcrumbSection },
+  { label: "Bubble", build: addBubbleSection },
   { label: "Button", build: addButtonSection },
   { label: "Button Group", build: addButtonGroupSection },
   { label: "Calendar", build: addCalendarSection },
@@ -129,7 +135,9 @@ const SECTIONS: SectionBuilder[] = [
   { label: "Item", build: addItemSection },
   { label: "Kbd", build: addKbdSection },
   { label: "Label", build: addLabelSection },
+  { label: "Marker", build: addMarkerSection },
   { label: "Menubar", build: addMenubarSection },
+  { label: "Message", build: addMessageSection },
   { label: "Native Select", build: addNativeSelectSection },
   { label: "Navigation Menu", build: addNavigationMenuSection },
   { label: "Pagination", build: addPaginationSection },

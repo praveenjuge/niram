@@ -61,6 +61,11 @@ export const componentDocs: Record<string, ComponentDocEntry> = {
     "aspect-ratio",
     "Constrains its content to a fixed width-to-height ratio. Use it to keep media and embeds from shifting layout as they load.",
   ),
+  Attachment: entry(
+    "attachment",
+    "A file or image attachment chip showing its media, name, and metadata. Use it for files and images in chat composers, message threads, and upload lists.",
+    "The `Media` axis switches between a file icon and an image thumbnail; the `State` axis covers done, uploading, and error.",
+  ),
   Avatar: entry(
     "avatar",
     "A small image element with a text fallback, used to represent a user or entity. Falls back to initials when no image is available.",
@@ -73,6 +78,11 @@ export const componentDocs: Record<string, ComponentDocEntry> = {
   Breadcrumb: entry(
     "breadcrumb",
     "Shows the path to the current page and lets users step back up the hierarchy. Use it on deep, nested screens.",
+  ),
+  Bubble: entry(
+    "bubble",
+    "The message surface in a conversation. Wrap it in a Message to render chat content with alignment, variants, and reactions.",
+    "The `Variant` axis covers default, secondary, muted, tinted, outline, ghost, and destructive; `Align` flips the bubble to the sender's side; the `Reactions` toggle shows the reactions pill.",
   ),
   Button: entry(
     "button",
@@ -179,9 +189,19 @@ export const componentDocs: Record<string, ComponentDocEntry> = {
     "label",
     "An accessible caption for a form control. Pair it with inputs so the field has a clickable, screen-reader-friendly name.",
   ),
+  Marker: entry(
+    "marker",
+    "An inline conversation marker for status updates, system notes, and labelled separators. Compose it with Message in a thread.",
+    "The `Variant` axis covers a plain note, a labelled separator flanked by rules, and a bottom-bordered row.",
+  ),
   Menubar: entry(
     "menubar",
     "A horizontal bar of top-level menus, like a desktop application menu. Use it for app-wide command groups.",
+  ),
+  Message: entry(
+    "message",
+    "A single message row in a conversation: an avatar beside a header, the message bubble, and a footer. Use it to build chat threads.",
+    "The `Align` axis flips between the incoming/assistant side (start) and the sender's own side (end), which reverses the row and right-aligns the content.",
   ),
   "Native Select": entry(
     "select",
