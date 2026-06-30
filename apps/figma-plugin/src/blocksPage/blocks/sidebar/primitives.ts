@@ -433,7 +433,17 @@ export type MenuButtonOpts = {
 export function createMenuButton(
   inputs: BlocksInputs,
   opts: MenuButtonOpts,
-): FrameNode {
+): SceneNode {
+  // Reuse the published "Sidebar Menu Button" for the rows it can faithfully
+  // represent (a leading icon + label, optionally active / sized / with a
+  // trailing glyph). The brand, avatar, badge, emoji, subtitle and muted rows
+  // are structurally different, so they stay drawn — as do bare-page callers /
+  // tests where the component isn't on the page.
+  if (isSimpleMenuButton(opts)) {
+    const instance = instanceMenuButton(inputs, opts);
+    if (instance) return instance;
+  }
+
   const t = inputs.theme.light;
   const p = inputs.primitives;
   const lib = iconLibrary(inputs);
@@ -631,10 +641,142 @@ export function createMenuButton(
   return row;
 }
 
-// `SidebarMenuSub`: `ml-3.5 flex flex-col gap-1 border-l border-sidebar-border
-// px-2.5 py-0.5`. Holds `SidebarMenuSubButton`s (`h-7 px-2 rounded-md`). Figma
-// has no per-child margins, so the `ml-3.5` indent is a transparent left pad on
-// an outer wrapper; the inner frame carries the left border + `px-2.5`.
+// A row is "simple" — representable by the published Sidebar Menu Button — when
+// it's just a leading icon + label (optionally active / sized / with a trailing
+// glyph). The brand, avatar, small-brand, subtitle, badge, emoji and muted rows
+// are structurally different and stay drawn.
+function isSimpleMenuButton(opts: MenuButtonOpts): boolean {
+  return (
+    !opts.brand &&
+    !opts.avatar &&
+    !opts.smallBrand &&
+    !opts.subtitle &&
+    !opts.badge &&
+    !opts.emoji &&
+    !opts.muted
+  );
+}
+
+// Instance the published "Sidebar Menu Button" for a simple row, choosing the
+// matching State × Size variant and configuring the label + icons. Returns
+// undefined when the component isn't on the page (bare-page callers / tests),
+// so createMenuButton falls back to drawing the row.
+function instanceMenuButton(
+  inputs: BlocksInputs,
+  opts: MenuButtonOpts,
+): InstanceNode | undefined {
+  const page = inputs.targetPage;
+  if (!page) return undefined;
+  const size = opts.size ?? "default";
+  const variant = `State=${opts.active ? "active" : "default"}, Size=${size}`;
+  const source = findInstanceSource(
+    page as unknown as SceneNode,
+    "Sidebar Menu Button",
+    variant,
+  );
+  if (!source || typeof source.createInstance !== "function") return undefined;
+  const instance = source.createInstance();
+  instance.name = opts.active ? "Item (active)" : "Item";
+  configureMenuButtonInstance(instance, inputs, opts);
+  return instance;
+}
+
+// Configure a Sidebar Menu Button instance to match the requested row, via
+// per-instance overrides (no component-property juggling): set the label text,
+// swap or hide the leading icon, and show + swap or hide the trailing glyph.
+// Every edit is guarded — hosts that reject an override keep the default, and
+// the in-memory test mock (childless instances) simply no-ops.
+function configureMenuButtonInstance(
+  instance: InstanceNode,
+  inputs: BlocksInputs,
+  opts: MenuButtonOpts,
+): void {
+  const label = findDescendantByName(instance, "Label");
+  if (label && label.type === "TEXT") {
+    try {
+      (label as unknown as { characters: string }).characters = opts.label;
+    } catch {
+      // Locked / mixed-font text — keep the default copy.
+    }
+  }
+
+  const icon = findDescendantByName(instance, "Icon");
+  if (icon) {
+    if (opts.icon) swapToDsIcon(icon, inputs, opts.icon);
+    else setVisible(icon, false);
+  }
+
+  const trailing = findDescendantByName(instance, "Trailing");
+  if (trailing) {
+    if (opts.trailingIcon) {
+      setVisible(trailing, true);
+      swapToDsIcon(trailing, inputs, opts.trailingIcon);
+    } else {
+      setVisible(trailing, false);
+    }
+  }
+}
+
+// Swap a nested icon instance to the published Design System icon for `name`
+// (resolved across libraries). No-ops when the icon set isn't available or the
+// node isn't a swappable instance.
+function swapToDsIcon(
+  node: SceneNode,
+  inputs: BlocksInputs,
+  name: string,
+): void {
+  const target = resolveDsIcon(inputs, name);
+  if (!target) return;
+  const swap = (
+    node as unknown as { swapComponent?: (component: ComponentNode) => void }
+  ).swapComponent;
+  if (typeof swap !== "function") return;
+  try {
+    swap.call(node, target);
+  } catch {
+    // Host rejected the swap — keep the default glyph.
+  }
+}
+
+// Resolve a sidebar glyph name to a published Design System icon component,
+// picking the first cross-library candidate present in the set.
+function resolveDsIcon(
+  inputs: BlocksInputs,
+  name: string,
+): ComponentNode | undefined {
+  const icons = inputs.iconComponents;
+  if (!icons) return undefined;
+  for (const candidate of iconCandidates(name)) {
+    const component = icons.get(candidate);
+    if (component) return component;
+  }
+  return undefined;
+}
+
+function setVisible(node: SceneNode, visible: boolean): void {
+  try {
+    (node as unknown as { visible: boolean }).visible = visible;
+  } catch {
+    // Host rejected the visibility override — leave the layer as-is.
+  }
+}
+
+// Find the first descendant (excluding the root) with the given name.
+function findDescendantByName(
+  root: SceneNode,
+  name: string,
+): SceneNode | undefined {
+  const stack: SceneNode[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (node !== root && node.name === name) return node;
+    const children = (node as unknown as { children?: SceneNode[] }).children;
+    if (children) {
+      for (const child of children) stack.push(child);
+    }
+  }
+  return undefined;
+}
 export function createMenuSub(inputs: BlocksInputs): {
   wrapper: FrameNode;
   body: FrameNode;

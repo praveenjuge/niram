@@ -28,18 +28,11 @@ import {
   bindStrokeColor,
 } from "../bindings";
 import { applyFont } from "../../fonts";
-import {
-  createIcon,
-  instantiateIcon,
-  resolveIconLibrary,
-  resolveIconName,
-} from "../../icons";
+import { createIcon, instantiateIcon, resolveIconLibrary } from "../../icons";
 import { styleComponentSet, wrapInSectionCard } from "../layout";
 import {
   collectByTypeAndName,
   createConfiguredSlot,
-  defineBooleanProperty,
-  defineIconSwapProperty,
   defineTextProperty,
 } from "../properties";
 import type { ComponentsInputs } from "../types";
@@ -162,30 +155,12 @@ function buildMenuButtonSet(
     collectByTypeAndName(set, "TEXT", "Label"),
   );
 
-  // The leading glyph as a swappable instance of the Design System icon set,
-  // when it's available (same model as the Toggle).
-  if (inputs.iconComponents) {
-    const iconName = resolveIconName(
-      resolveIconLibrary(inputs.presetSummary),
-      "folder",
-    );
-    const source = iconName ? inputs.iconComponents.get(iconName) : undefined;
-    defineIconSwapProperty(
-      set,
-      "Icon",
-      source as unknown as { key?: string; parent?: { type: string } },
-      collectByTypeAndName(set, "INSTANCE", "Icon"),
-    );
-  }
-
-  // A trailing chevron, hidden by default and toggled per instance — covers the
-  // collapsible / "has submenu" rows without a separate variant axis.
-  defineBooleanProperty(
-    set,
-    "Trailing",
-    false,
-    collectByTypeAndName(set, "FRAME", "Trailing"),
-  );
+  // The leading + trailing glyphs are swappable Design System icon-set
+  // instances (when the set is available), so designers can swap them from the
+  // nested-instance menu and the Sidebar rails can swap each row's glyph
+  // directly. They're left unbound to component properties on purpose — binding
+  // `visible`/`mainComponent` to a property would stop the rails from
+  // overriding those nested layers per-row.
 
   return set;
 }
@@ -253,13 +228,22 @@ function buildMenuButton(
   comp.appendChild(label);
   growText(label);
 
-  // Trailing chevron (hidden by default; the "Trailing" boolean toggles it).
-  const trailing = createIcon({
-    library: resolveIconLibrary(inputs.presetSummary),
-    name: "chevron-right",
-    size: 16,
-    color: fg,
-  });
+  // Trailing icon — hidden by default; the "Trailing" boolean toggles it and
+  // the "Trailing Icon" swap (or the rails' block code) sets the glyph. A
+  // swappable DS-set instance when available, else a drawn chevron.
+  const trailing = inputs.iconComponents
+    ? instantiateIcon({
+        icons: inputs.iconComponents,
+        library: resolveIconLibrary(inputs.presetSummary),
+        name: "chevron-right",
+        size: 16,
+      })
+    : createIcon({
+        library: resolveIconLibrary(inputs.presetSummary),
+        name: "chevron-right",
+        size: 16,
+        color: fg,
+      });
   if (trailing) {
     trailing.name = "Trailing";
     (trailing as unknown as { visible: boolean }).visible = false;

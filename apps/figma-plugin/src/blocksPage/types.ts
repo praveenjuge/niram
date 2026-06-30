@@ -18,6 +18,7 @@ import type {
 import type { EffectStyleMap } from "../effectStyles";
 import type { TextStyleMap } from "../textStyles";
 import type { ResolvedFonts } from "../primitives";
+import type { IconComponentMap } from "../icons";
 import type { RegionProgress } from "../progress";
 
 // Blocks stack in a single column with generous breathing room between them.
@@ -52,6 +53,12 @@ export type BlocksInputs = {
   // Tailwind typography text styles. Populated by the builder when absent so
   // matching text nodes get mapped onto a published style.
   textStyles?: TextStyleMap;
+  // The Design System icon showcase's published components, keyed by
+  // library-specific icon name. When present, blocks that instance components
+  // carrying swappable icons (the Sidebar rails reuse Sidebar Menu Button) swap
+  // each row's glyph to the matching published icon. Optional so existing
+  // callers/tests keep working.
+  iconComponents?: IconComponentMap;
   // The page to render the blocks region onto — the Components page. Blocks
   // also search this same page for component sets and standalone components and
   // embed live instances of them (Button, Input, Label, Card, Chart, Table,

@@ -560,7 +560,9 @@ function buildSidebar11(inputs: BlocksInputs): ComponentNode {
       active: node.active,
     });
     // Indent nested tree rows (`SidebarMenuSub` mx + the tree's own nesting).
-    row.paddingLeft = 8 + node.depth * 16;
+    // `row` may be a drawn frame or a Sidebar Menu Button instance; both accept
+    // a padding override.
+    (row as FrameNode).paddingLeft = 8 + node.depth * 16;
     appendFill(filesMenu, row);
   }
   appendFill(files, filesMenu);
@@ -835,7 +837,7 @@ function buildWorkspacesGroup(inputs: BlocksInputs): FrameNode {
   return g;
 }
 
-function buildUserButton(inputs: BlocksInputs): FrameNode {
+function buildUserButton(inputs: BlocksInputs): SceneNode {
   return createMenuButton(inputs, {
     label: USER.name,
     subtitle: USER.email,

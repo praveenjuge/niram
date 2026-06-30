@@ -147,12 +147,15 @@ describe("addSidebarSection", () => {
 
   it("uses swappable icon-set instances when the icon set is published", async () => {
     const inputs = await makeInputs();
-    // A minimal published icon set: the default (lucide) "folder" glyph as a
-    // component the buttons can instance + swap.
-    const folder = (
+    // A minimal published icon set: the default (lucide) leading + trailing
+    // glyphs as components the buttons instance (and the rails can swap).
+    const figmaApi = (
       globalThis as unknown as { figma: { createComponent: () => FakeNode } }
-    ).figma.createComponent();
-    const iconComponents = new Map<string, FakeNode>([["folder", folder]]);
+    ).figma;
+    const iconComponents = new Map<string, FakeNode>([
+      ["folder", figmaApi.createComponent()],
+      ["chevron-right", figmaApi.createComponent()],
+    ]);
 
     const page = fig().createPage();
     await addSidebarSection(page as never, {
@@ -171,13 +174,10 @@ describe("addSidebarSection", () => {
       (n) => n.type === "INSTANCE" && n.name === "Icon",
     );
     expect(iconInstances.length).toBe(6);
-    // …and the set exposes an Icon instance-swap property.
-    const props = set.__componentProperties as
-      | Record<string, { type: string }>
-      | undefined;
-    const hasIconSwap = Object.keys(props ?? {}).some((k) =>
-      k.startsWith("Icon#"),
+    const trailingInstances = collect(
+      set,
+      (n) => n.type === "INSTANCE" && n.name === "Trailing",
     );
-    expect(hasIconSwap).toBe(true);
+    expect(trailingInstances.length).toBe(6);
   });
 });

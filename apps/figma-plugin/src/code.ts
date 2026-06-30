@@ -167,6 +167,7 @@ async function runGenerate(presetCode: string) {
           fontVars: result.variables.fonts,
           effectStyles: result.effectStyles,
           textStyles: result.textStyles,
+          iconComponents: ds.iconComponents,
           targetPage: componentsPage,
           onProgress: progress.region("blocks"),
         })

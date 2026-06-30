@@ -380,4 +380,25 @@ describe("sidebar block reuses the published atoms", () => {
     const texts = variantTexts(set);
     expect(texts.has("Documentation")).toBe(true);
   });
+
+  it("builds the flat icon menu (sidebar-13) from Sidebar Menu Button instances", async () => {
+    const inputs = await makeInputsOnComponentsPage();
+    const page = inputs.targetPage as unknown as { children: FakeNode[] };
+    const existing = new Set(page.children);
+
+    await addSidebarBlock(inputs.targetPage as never, inputs);
+
+    const added = page.children.filter((c) => !existing.has(c));
+    const set = added
+      .map((node) => findSetNamed(node, "Sidebar"))
+      .find((s): s is FakeNode => Boolean(s))!;
+    const sidebar13 = set.children.find(
+      (c) => c.name === "Variant=sidebar-13",
+    )!;
+    // sidebar-13 is a single flat icon menu of the 12 SETTINGS_NAV rows. Every
+    // row is a "simple" icon + label button (no group label / separator / sub),
+    // so each becomes a Sidebar Menu Button instance — 12 in total.
+    const instances = collect(sidebar13, (n) => n.type === "INSTANCE");
+    expect(instances.length).toBe(12);
+  });
 });
