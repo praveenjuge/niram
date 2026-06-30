@@ -33,8 +33,9 @@ export async function addSidebarBlock(
     // Figma's variant convention: `Prop=value`. One property ("Variant").
     comp.name = `Variant=${variant.key}`;
     // Wrap each SidebarMenu's items in a slot so designers can recompose the
-    // menus from an instance without detaching the rail.
-    slotifyMenus(comp);
+    // menus from an instance without detaching the rail. The slot offers the
+    // published "Sidebar Menu Button" set as its preferred insert.
+    slotifyMenus(comp, inputs);
     // Components must live in the document before combineAsVariants; park them
     // on the page, then the combine call reparents them into the set.
     page.appendChild(comp);

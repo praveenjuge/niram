@@ -304,6 +304,31 @@ export const componentDocs: Record<string, ComponentDocEntry> = {
     "Reference text styles — headings, body, lists, and inline elements — that mirror the Tailwind typography scale.",
   ),
 
+  // --- Sidebar kit (small, reusable sidebar atoms) -------------------------
+  "Sidebar Menu Button": entry(
+    "sidebar",
+    "The core sidebar nav row: a leading icon, a label, and an optional trailing chevron. Drop instances into a Sidebar Menu to build a rail.",
+    "The `State` axis covers default and active (`bg-sidebar-accent`); `Size` covers default, sm, and lg. Edit the `Label`, swap the `Icon`, and toggle `Trailing`.",
+  ),
+  "Sidebar Menu Sub Button": entry(
+    "sidebar",
+    "A nested sub-item row used inside a SidebarMenuSub, slightly shorter than the menu button. Use it for second-level navigation.",
+    "The `State` axis covers default and active; edit the `Label` per instance.",
+  ),
+  "Sidebar Group Label": entry(
+    "sidebar",
+    "The muted caption that titles a section of the sidebar (SidebarGroupLabel). Use it above a menu to group related links.",
+  ),
+  "Sidebar Separator": entry(
+    "sidebar",
+    "A thin divider that splits sidebar sections (SidebarSeparator). Use it to separate groups within the rail.",
+  ),
+  "Sidebar Menu": entry(
+    "sidebar",
+    "Composed sidebar menus as a variant set, built from Sidebar Menu Button instances inside an Items slot. Drop in more button instances to extend a menu.",
+    "The `Variant` axis covers a flat menu (default), a labeled group (labeled), and a menu with a nested submenu (submenu); the `Items` slot offers the Sidebar Menu Button as its preferred insert.",
+  ),
+
   // --- Blocks region -------------------------------------------------------
   Chart: {
     url: CHARTS_URL,

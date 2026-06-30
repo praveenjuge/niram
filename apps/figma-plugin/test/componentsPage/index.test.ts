@@ -41,10 +41,10 @@ describe("buildComponentsPage", () => {
     expect(phases).toContain("binding");
     expect(phases).toContain("layout");
 
-    // 61 sections each step the build phase, plus a final "Done" step.
+    // 62 sections each step the build phase, plus a final "Done" step.
     const building = events.filter((e) => e.phase === "building");
-    expect(building.length).toBe(62);
-    expect(building.at(-1)).toMatchObject({ current: 61, total: 61 });
+    expect(building.length).toBe(63);
+    expect(building.at(-1)).toMatchObject({ current: 62, total: 62 });
     // The sweeps complete (current === total of the nodes they walked).
     const lastText = events.filter((e) => e.phase === "text-styles").at(-1)!;
     expect(lastText.current).toBe(lastText.total);

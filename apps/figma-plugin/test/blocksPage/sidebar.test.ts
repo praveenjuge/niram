@@ -3,6 +3,7 @@ import { addSidebarBlock } from "../../src/blocksPage/blocks/sidebar";
 import { SIDEBAR_VARIANTS } from "../../src/blocksPage/blocks/sidebar/variants";
 import { SIDEBAR_HEIGHT } from "../../src/blocksPage/blocks/sidebar/primitives";
 import type { BlocksInputs } from "../../src/blocksPage";
+import { buildComponentsPage } from "../../src/componentsPage";
 import { generateFromRegistry } from "../../src/generator";
 import { resolvePreset } from "../../src/registry";
 
@@ -267,4 +268,116 @@ describe("sidebar variant fidelity", () => {
       }
     });
   }
+});
+
+// ----- Componentized reuse -------------------------------------------------
+// When the Components region is on the page, the Sidebar block composes its
+// rails from live instances of the published sidebar atoms (Group Label,
+// Separator, Menu Sub Button) and points each menu slot's preferred insert at
+// the published "Sidebar Menu Button" set, instead of drawing every part.
+
+type GeneratedVars = Awaited<
+  ReturnType<typeof generateFromRegistry>
+>["variables"];
+
+async function makeVars(code = "b2fA"): Promise<GeneratedVars> {
+  const resolved = resolvePreset(code);
+  if (!resolved.ok) throw new Error("fixture failed to resolve");
+  const generated = await generateFromRegistry(resolved.data, {
+    presetCode: code,
+  });
+  return generated.variables;
+}
+
+// Build the Components grid (publishing the sidebar atoms) and return inputs
+// that target the shared Niram page, mirroring a live run.
+async function makeInputsOnComponentsPage(
+  code = "b2fA",
+): Promise<BlocksInputs> {
+  const vars = await makeVars(code);
+  const componentsInputs = {
+    presetCode: code,
+    primitives: vars.primitives,
+    tailwindColors: vars.tailwindColors,
+    theme: vars.theme,
+  };
+  await buildComponentsPage(componentsInputs);
+  const targetPage = (
+    globalThis as unknown as {
+      figma: { root: { children: { type: string; name: string }[] } };
+    }
+  ).figma.root.children.find(
+    (c) => c.type === "PAGE" && c.name === "Niram",
+  ) as unknown as PageNode;
+  return { ...componentsInputs, targetPage };
+}
+
+function findSetNamed(root: FakeNode, name: string): FakeNode | undefined {
+  return collect(root, (n) => n.type === "COMPONENT_SET" && n.name === name)[0];
+}
+
+describe("sidebar block reuses the published atoms", () => {
+  it("embeds live instances of the sidebar atoms in the rails", async () => {
+    const inputs = await makeInputsOnComponentsPage();
+    const page = inputs.targetPage as unknown as { children: FakeNode[] };
+    const existing = new Set(page.children);
+
+    await addSidebarBlock(inputs.targetPage as never, inputs);
+
+    const added = page.children.filter((c) => !existing.has(c));
+    const set = added
+      .map((node) => findSetNamed(node, "Sidebar"))
+      .find((s): s is FakeNode => Boolean(s));
+    expect(set).toBeDefined();
+    // The rails now carry reused atom instances (group labels / separators /
+    // sub-buttons) on top of their drawn icon rows.
+    const instances = collect(set!, (n) => n.type === "INSTANCE");
+    expect(instances.length).toBeGreaterThan(0);
+  });
+
+  it("points each menu slot's preferred insert at the Sidebar Menu Button set", async () => {
+    const inputs = await makeInputsOnComponentsPage();
+    const page = inputs.targetPage as unknown as { children: FakeNode[] };
+    const existing = new Set(page.children);
+
+    await addSidebarBlock(inputs.targetPage as never, inputs);
+
+    const added = page.children.filter((c) => !existing.has(c));
+    const set = added
+      .map((node) => findSetNamed(node, "Sidebar"))
+      .find((s): s is FakeNode => Boolean(s))!;
+
+    // slotifyMenus records the slot's preferred values via editComponentProperty
+    // on each variant component (the mock stores them under __slotProperties).
+    const variantsWithPreferred = set.children.filter((variant) => {
+      const slotProps = (
+        variant as unknown as {
+          __slotProperties?: Record<
+            string,
+            { preferredValues?: { type: string }[] }
+          >;
+        }
+      ).__slotProperties;
+      if (!slotProps) return false;
+      return Object.values(slotProps).some((p) =>
+        (p.preferredValues ?? []).some((v) => v.type === "COMPONENT_SET"),
+      );
+    });
+    expect(variantsWithPreferred.length).toBeGreaterThan(0);
+  });
+
+  it("still draws full rails on a bare page (no atoms to reuse)", async () => {
+    const inputs = await makeInputs();
+    const page = inputs.targetPage as unknown as { children: FakeNode[] };
+
+    await addSidebarBlock(page as never, inputs);
+
+    const set = findComponentSet(page.children[0]!)!;
+    // No published atoms on the Scratch page → no reused instances.
+    const instances = collect(set, (n) => n.type === "INSTANCE");
+    expect(instances).toHaveLength(0);
+    // The drawn rails still render their signature copy.
+    const texts = variantTexts(set);
+    expect(texts.has("Documentation")).toBe(true);
+  });
 });

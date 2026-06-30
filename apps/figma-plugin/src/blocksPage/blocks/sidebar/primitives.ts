@@ -29,8 +29,16 @@ import {
 import { applyFont } from "../../../fonts";
 import { createNamedIcon, resolveIconLibrary } from "../../../icons";
 import { createConfiguredSlot } from "../../../componentsPage/properties";
+import { findInstanceSource } from "../../../componentsPage/utils";
+import { instanceFromComponents } from "../../utils";
 import type { IconLibraryName } from "../../../data/icons";
 import type { BlocksInputs } from "../../types";
+
+// Preferred-insert value Figma offers inside a sidebar menu slot: the published
+// "Sidebar Menu Button" component set. Best-effort — it resolves only when the
+// Components region has been built on the same page (live runs); isolated
+// callers / bare-page tests get an unconstrained slot instead.
+type SlotPreferredValue = { type: "COMPONENT" | "COMPONENT_SET"; key: string };
 
 // The user-requested fixed sidebar height (a full desktop screen).
 export const SIDEBAR_HEIGHT = 982;
@@ -337,10 +345,21 @@ export function createGroup(name = "Group"): FrameNode {
 }
 
 // `SidebarGroupLabel`: `h-8 px-2 text-xs font-medium text-sidebar-foreground/70`.
+// Reuses the published "Sidebar Group Label" component when the Components
+// region is on the page (live runs); falls back to drawing the row for
+// isolated callers / bare-page tests.
 export function createGroupLabel(
   inputs: BlocksInputs,
   text: string,
-): FrameNode {
+): SceneNode {
+  const instance = instanceFromComponents(
+    inputs,
+    "Sidebar Group Label",
+    undefined,
+    text,
+  );
+  if (instance) return instance;
+
   const t = inputs.theme.light;
   const p = inputs.primitives;
 
@@ -660,7 +679,20 @@ export function createMenuSubButton(
   inputs: BlocksInputs,
   label: string,
   opts: { active?: boolean; emoji?: string } = {},
-): FrameNode {
+): SceneNode {
+  // Reuse the published "Sidebar Menu Sub Button" for the plain (no-emoji)
+  // rows, picking the matching state variant; the emoji rows and bare-page
+  // callers fall through to the drawn row.
+  if (!opts.emoji) {
+    const instance = instanceFromComponents(
+      inputs,
+      "Sidebar Menu Sub Button",
+      opts.active ? "State=active" : "State=default",
+      label,
+    );
+    if (instance) return instance;
+  }
+
   const t = inputs.theme.light;
   const p = inputs.primitives;
 
@@ -712,7 +744,10 @@ export function createMenuSubButton(
 // areas (`createMenu` → "Menu" frames) are slotted; the rail chrome (header,
 // search, separators, group labels, sub-menus) stays fixed. Slots are named
 // uniquely per component ("Menu Items N") so the SLOT properties don't collide.
-export function slotifyMenus(comp: ComponentNode): void {
+// Each slot offers the published "Sidebar Menu Button" set as its preferred
+// insert (when the Components region is on the page), so the slot reads as a
+// real, typed drop target rather than an opaque blob.
+export function slotifyMenus(comp: ComponentNode, inputs: BlocksInputs): void {
   const menus: FrameNode[] = [];
   const visit = (node: { children?: readonly SceneNode[] }) => {
     const children = node.children;
@@ -726,6 +761,8 @@ export function slotifyMenus(comp: ComponentNode): void {
   };
   visit(comp as unknown as { children?: readonly SceneNode[] });
 
+  const preferredValues = menuButtonPreferredValues(inputs);
+
   let index = 0;
   for (const menu of menus) {
     const items = [...menu.children];
@@ -734,6 +771,7 @@ export function slotifyMenus(comp: ComponentNode): void {
     const slot = createConfiguredSlot(comp, `Menu Items ${index}`, items, {
       description: "Sidebar menu items.",
       settings: { minChildren: 1 },
+      preferredValues,
     });
     menu.appendChild(slot);
     slot.layoutMode = "VERTICAL";
@@ -747,8 +785,36 @@ export function slotifyMenus(comp: ComponentNode): void {
   }
 }
 
-// `SidebarSeparator`: `mx-2 h-px bg-sidebar-border`.
-export function createSeparator(inputs: BlocksInputs): FrameNode {
+// Resolve the published "Sidebar Menu Button" set's key so a menu slot can
+// offer it as the preferred insert. findInstanceSource returns a variant
+// component; its parent is the component set that carries the key. Returns
+// undefined when the set isn't on the page (isolated callers / bare-page tests)
+// so the slot is created unconstrained.
+function menuButtonPreferredValues(
+  inputs: BlocksInputs,
+): ReadonlyArray<SlotPreferredValue> | undefined {
+  const page = inputs.targetPage;
+  if (!page) return undefined;
+  const variant = findInstanceSource(
+    page as unknown as SceneNode,
+    "Sidebar Menu Button",
+  );
+  const parent = variant?.parent as
+    | { type?: string; key?: string }
+    | null
+    | undefined;
+  if (parent && parent.type === "COMPONENT_SET" && parent.key) {
+    return [{ type: "COMPONENT_SET", key: parent.key }];
+  }
+  return undefined;
+}
+
+// `SidebarSeparator`: `mx-2 h-px bg-sidebar-border`. Reuses the published
+// "Sidebar Separator" component when present; draws the divider otherwise.
+export function createSeparator(inputs: BlocksInputs): SceneNode {
+  const instance = instanceFromComponents(inputs, "Sidebar Separator");
+  if (instance) return instance;
+
   const t = inputs.theme.light;
   const wrap = figma.createFrame();
   wrap.name = "Separator";

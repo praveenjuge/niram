@@ -80,6 +80,36 @@ describe("generation idempotency", () => {
     // clean bIkeymG run produces — no leftovers from the first preset.
     expect(pathA).toEqual(pathB);
   });
+
+  it("loads the previous preset's font before overwriting the bound font variable", async () => {
+    // Regression: re-running with a *different* preset rewrites the font-sans /
+    // font-heading variables. Those variables are still bound to text nodes
+    // from the first build (painted with the old font), so Figma re-validates
+    // them on setValueForMode and throws "unloaded font" unless the OLD font is
+    // also loaded first. The generator must load the previously stored family.
+    const first = await generate("b2fA", "geist");
+    const previousFamily = first.fonts.body;
+
+    const figma = liveFigma();
+    // Reset the recorded font loads so we only inspect the second run's calls.
+    figma.loadFontAsync.mock.calls.length = 0;
+
+    const second = await generate("bIkeymG", "inter");
+    const newFamily = second.fonts.body;
+
+    // The fixtures must use different fonts for this regression to mean anything.
+    expect(previousFamily).not.toBe(newFamily);
+
+    const requested = new Set(
+      figma.loadFontAsync.mock.calls.map(
+        (call) => (call[0] as { family: string }).family,
+      ),
+    );
+    // The second run loads both the new font and the previously stored one, so
+    // the bound-variable revalidation never hits an unloaded face.
+    expect(requested.has(newFamily)).toBe(true);
+    expect(requested.has(previousFamily)).toBe(true);
+  });
 });
 
 describe("golden variable tree", () => {
@@ -89,9 +119,8 @@ describe("golden variable tree", () => {
 
   it("keeps the three collections single-mode with stable mode names", async () => {
     const tree = await snapshotCollections(liveFigma());
-    expect(
-      tree.map((c) => ({ name: c.name, modes: c.modes })),
-    ).toMatchInlineSnapshot(`
+    expect(tree.map((c) => ({ name: c.name, modes: c.modes })))
+      .toMatchInlineSnapshot(`
       [
         {
           "modes": [

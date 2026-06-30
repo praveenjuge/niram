@@ -30,6 +30,7 @@ import { addItemSection } from "../../src/componentsPage/sections/item";
 import { addEmptySection } from "../../src/componentsPage/sections/empty";
 import { addTableSection } from "../../src/componentsPage/sections/table";
 import { addDataTableSection } from "../../src/componentsPage/sections/dataTable";
+import { addSidebarSection } from "../../src/componentsPage/sections/sidebar";
 
 // Section-level slot coverage: each converted component should expose at least
 // the expected SLOT nodes (named content/action/item regions). We build the
@@ -224,5 +225,9 @@ describe("form composition + flexible rows expose slots", () => {
 
   it("Data Table exposes a Rows slot", async () => {
     expect(await slotsFor(addDataTableSection)).toContain("Rows");
+  });
+
+  it("Sidebar Menu exposes an Items slot", async () => {
+    expect(await slotsFor(addSidebarSection)).toContain("Items");
   });
 });

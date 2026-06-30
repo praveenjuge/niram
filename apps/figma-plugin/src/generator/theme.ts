@@ -44,6 +44,32 @@ function themeVariableName(key: string): string {
   return key;
 }
 
+// Read the current per-mode string values of the given variables (e.g. the
+// previously stored font family names), de-duped and skipping anything that
+// isn't a non-empty string. Used so a re-run can load the *old* preset fonts
+// before overwriting a bound font variable, preventing Figma's "unloaded font"
+// rejection when setValueForMode re-validates the already-bound text nodes.
+function readStringValues(
+  variables: ReadonlyArray<Variable>,
+  modeId: string,
+): string[] {
+  const out: string[] = [];
+  for (const variable of variables) {
+    const values = (
+      variable as unknown as { valuesByMode?: Record<string, unknown> }
+    ).valuesByMode;
+    const value = values ? values[modeId] : undefined;
+    if (
+      typeof value === "string" &&
+      value.length > 0 &&
+      out.indexOf(value) === -1
+    ) {
+      out.push(value);
+    }
+  }
+  return out;
+}
+
 export async function ensureThemeCollection(
   data: ResolvedRegistry,
   tailwindColors: TailwindColorVarMap,
@@ -126,26 +152,34 @@ export async function ensureThemeCollection(
   // whole preset in one collection. Heading "inherit" reuses the body font.
   const fonts = resolveFonts(data.config.font, data.config.fontHeading);
 
-  // On a re-run these STRING variables may already be bound to text nodes from
-  // a previous build. Figma rejects setValueForMode on a bound font variable
-  // unless every face those nodes use is loaded — including the Noto fallbacks
-  // Figma substitutes for glyphs the preset font can't render. Load the preset
-  // families plus the fallback glyph families before writing the values.
-  await loadFontFamilies([
-    fonts.body,
-    fonts.heading,
-    ...FALLBACK_GLYPH_FAMILIES,
-  ]);
-
+  // Create the font variables first so we can read any *previous* values: on a
+  // re-run (especially with a different preset) these STRING variables are
+  // already bound to text nodes from the earlier build, and those nodes are
+  // still painted with the old preset's font until the page builders rebuild
+  // them.
   const bodyVar = await getOrCreateVariable(collection, "font-sans", "STRING");
-  bodyVar.setValueForMode(modeId, fonts.body);
-  variableCount += 1;
-
   const headingVar = await getOrCreateVariable(
     collection,
     "font-heading",
     "STRING",
   );
+
+  // Figma rejects setValueForMode on a bound font variable unless every face
+  // the bound nodes still use is loaded. Load the new preset families, the
+  // previously stored families (what those existing nodes are painted with),
+  // and the Noto glyph fallbacks Figma substitutes for characters the preset
+  // font can't render — all before writing the new values.
+  const previousFamilies = readStringValues([bodyVar, headingVar], modeId);
+  await loadFontFamilies([
+    fonts.body,
+    fonts.heading,
+    ...previousFamilies,
+    ...FALLBACK_GLYPH_FAMILIES,
+  ]);
+
+  bodyVar.setValueForMode(modeId, fonts.body);
+  variableCount += 1;
+
   headingVar.setValueForMode(modeId, fonts.heading);
   variableCount += 1;
 
