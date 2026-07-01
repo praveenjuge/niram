@@ -1,7 +1,8 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router"
 
-import { Card, CardHeader, CardTitle } from "@/components/ui/card"
+import { BlockPreview } from "@/lib/block-previews"
 import { getCategoryBySlug } from "@/lib/blocks"
+import { getInstallCommand } from "@/lib/registry"
 
 export const Route = createFileRoute("/category/$slug")({
   component: CategoryPage,
@@ -18,28 +19,34 @@ function CategoryPage() {
   const { category } = Route.useLoaderData()
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-16">
+    <main className="mx-auto w-full max-w-6xl px-6 py-10">
       <Link
         to="/"
         className="text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         ← All categories
       </Link>
-      <header className="mt-4 mb-10">
-        <h1 className="text-3xl font-semibold tracking-tight">
+      <header className="mt-4 mb-8 flex flex-col gap-2">
+        <h1 className="text-2xl font-semibold tracking-tight">
           {category.title}
         </h1>
-        <p className="mt-2 max-w-2xl text-muted-foreground">
+        <p className="max-w-2xl text-sm text-muted-foreground">
           {category.description}
         </p>
       </header>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="flex flex-col gap-6">
         {category.blocks.map((block) => (
-          <Card key={block.name}>
-            <CardHeader>
-              <CardTitle>{block.name}</CardTitle>
-            </CardHeader>
-          </Card>
+          <section key={block.slug} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-base font-medium">{block.title}</h2>
+              <code className="text-xs break-all text-muted-foreground">
+                {getInstallCommand(block.source)}
+              </code>
+            </div>
+            <div className="flex min-h-80 w-full items-center justify-center rounded-lg border bg-muted/30 p-6">
+              <BlockPreview block={block} />
+            </div>
+          </section>
         ))}
       </div>
     </main>
