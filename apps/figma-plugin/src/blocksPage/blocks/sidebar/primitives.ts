@@ -28,17 +28,10 @@ import {
 } from "../../../componentsPage/bindings";
 import { applyFont } from "../../../fonts";
 import { createNamedIcon, resolveIconLibrary } from "../../../icons";
-import { createConfiguredSlot } from "../../../componentsPage/properties";
 import { findInstanceSource } from "../../../componentsPage/utils";
 import { instanceFromComponents } from "../../utils";
 import type { IconLibraryName } from "../../../data/icons";
 import type { BlocksInputs } from "../../types";
-
-// Preferred-insert value Figma offers inside a sidebar menu slot: the published
-// "Sidebar Menu Button" component set. Best-effort — it resolves only when the
-// Components region has been built on the same page (live runs); isolated
-// callers / bare-page tests get an unconstrained slot instead.
-type SlotPreferredValue = { type: "COMPONENT" | "COMPONENT_SET"; key: string };
 
 // The user-requested fixed sidebar height (a full desktop screen).
 export const SIDEBAR_HEIGHT = 982;
@@ -668,7 +661,7 @@ function instanceMenuButton(
   const page = inputs.targetPage;
   if (!page) return undefined;
   const size = opts.size ?? "default";
-  const variant = `State=${opts.active ? "active" : "default"}, Size=${size}`;
+  const variant = `State=${opts.active ? "active" : "default"}, Size=${size}, Display=expanded`;
   const source = findInstanceSource(
     page as unknown as SceneNode,
     "Sidebar Menu Button",
@@ -777,6 +770,7 @@ function findDescendantByName(
   }
   return undefined;
 }
+
 export function createMenuSub(inputs: BlocksInputs): {
   wrapper: FrameNode;
   body: FrameNode;
@@ -881,76 +875,6 @@ export function createMenuSubButton(
   return row;
 }
 
-// Post-build pass: wrap each SidebarMenu's items in a slot so instances can
-// add/remove/reorder menu rows without detaching. Only the repeated menu item
-// areas (`createMenu` → "Menu" frames) are slotted; the rail chrome (header,
-// search, separators, group labels, sub-menus) stays fixed. Slots are named
-// uniquely per component ("Menu Items N") so the SLOT properties don't collide.
-// Each slot offers the published "Sidebar Menu Button" set as its preferred
-// insert (when the Components region is on the page), so the slot reads as a
-// real, typed drop target rather than an opaque blob.
-export function slotifyMenus(comp: ComponentNode, inputs: BlocksInputs): void {
-  const menus: FrameNode[] = [];
-  const visit = (node: { children?: readonly SceneNode[] }) => {
-    const children = node.children;
-    if (!children) return;
-    for (const child of children) {
-      if (child.type === "FRAME" && child.name === "Menu") {
-        menus.push(child as FrameNode);
-      }
-      visit(child as unknown as { children?: readonly SceneNode[] });
-    }
-  };
-  visit(comp as unknown as { children?: readonly SceneNode[] });
-
-  const preferredValues = menuButtonPreferredValues(inputs);
-
-  let index = 0;
-  for (const menu of menus) {
-    const items = [...menu.children];
-    if (items.length === 0) continue;
-    index += 1;
-    const slot = createConfiguredSlot(comp, `Menu Items ${index}`, items, {
-      description: "Sidebar menu items.",
-      settings: { minChildren: 1 },
-      preferredValues,
-    });
-    menu.appendChild(slot);
-    slot.layoutMode = "VERTICAL";
-    slot.primaryAxisSizingMode = "AUTO";
-    slot.counterAxisSizingMode = "FIXED";
-    slot.itemSpacing = menu.itemSpacing;
-    slot.fills = [];
-    slot.strokes = [];
-    fillW(slot);
-    for (const item of items) fillW(item);
-  }
-}
-
-// Resolve the published "Sidebar Menu Button" set's key so a menu slot can
-// offer it as the preferred insert. findInstanceSource returns a variant
-// component; its parent is the component set that carries the key. Returns
-// undefined when the set isn't on the page (isolated callers / bare-page tests)
-// so the slot is created unconstrained.
-function menuButtonPreferredValues(
-  inputs: BlocksInputs,
-): ReadonlyArray<SlotPreferredValue> | undefined {
-  const page = inputs.targetPage;
-  if (!page) return undefined;
-  const variant = findInstanceSource(
-    page as unknown as SceneNode,
-    "Sidebar Menu Button",
-  );
-  const parent = variant?.parent as
-    | { type?: string; key?: string }
-    | null
-    | undefined;
-  if (parent && parent.type === "COMPONENT_SET" && parent.key) {
-    return [{ type: "COMPONENT_SET", key: parent.key }];
-  }
-  return undefined;
-}
-
 // `SidebarSeparator`: `mx-2 h-px bg-sidebar-border`. Reuses the published
 // "Sidebar Separator" component when present; draws the divider otherwise.
 export function createSeparator(inputs: BlocksInputs): SceneNode {
@@ -967,58 +891,6 @@ export function createSeparator(inputs: BlocksInputs): SceneNode {
   bindFill(wrap, sidebarVar(t, "sidebar-border", "border"));
   wrap.strokes = [];
   return wrap;
-}
-
-// `SidebarInput`: `h-8 w-full rounded-md border bg-background`, with the search
-// glyph overlaid (`pl-8`). Drawn as an inline row so it reads correctly without
-// absolute positioning.
-export function createSearchField(
-  inputs: BlocksInputs,
-  placeholder = "Search the docs...",
-  height = 32,
-): FrameNode {
-  const t = inputs.theme.light;
-  const p = inputs.primitives;
-
-  const input = figma.createFrame();
-  input.name = "Search";
-  input.layoutMode = "HORIZONTAL";
-  input.primaryAxisSizingMode = "FIXED";
-  input.counterAxisSizingMode = "FIXED";
-  input.counterAxisAlignItems = "CENTER";
-  input.itemSpacing = 8;
-  input.paddingLeft = 8;
-  input.paddingRight = 8;
-  input.resize(10, height);
-  input.cornerRadius = 6;
-  bindCornerRadii(input, p.get("radius/md"));
-  bindFill(input, t.get("background"));
-  bindStrokeColor(input, t.get("border"));
-  input.strokeWeight = 1;
-  input.strokeAlign = "INSIDE";
-
-  const glyph = createNamedIcon({
-    library: iconLibrary(inputs),
-    name: iconCandidates("search"),
-    size: 16,
-    color: t.get("muted-foreground"),
-  });
-  if (glyph) {
-    glyph.name = "Icon";
-    (glyph as unknown as { opacity: number }).opacity = 0.5;
-    input.appendChild(glyph);
-  }
-
-  const text = figma.createText();
-  applyFont(text, "body", "Regular");
-  text.characters = placeholder;
-  text.fontSize = 14;
-  bindFontSize(text, p.get("font/size/sm"));
-  bindFill(text, t.get("muted-foreground"));
-  input.appendChild(text);
-  text.layoutGrow = 1;
-
-  return input;
 }
 
 // Helper: append a frame to an auto-layout parent and stretch it to full width.

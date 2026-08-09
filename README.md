@@ -7,8 +7,8 @@ resources. This repo is a Bun workspace monorepo with two apps:
 
 - **Figma plugin** (`apps/figma-plugin`) - paste a shadcn preset code and
   generate native Figma variables, styles, components, and blocks.
-- **Website** (`apps/web`) - a browsable catalog of evergreen shadcn blocks,
-  built with TanStack Start and styled with shadcn/ui.
+- **Website** (`apps/web`) - Blume-powered product documentation and a
+  browsable catalogue of evergreen shadcn blocks.
 
 ## Figma plugin
 
@@ -39,8 +39,9 @@ services, and only writes to the file where you run it.
 
 ## Website
 
-A catalog of shadcn blocks you can browse by category, sharing the same design
-language as the plugin. Routes are file-based under `apps/web/src/routes`.
+Blume-powered product documentation and a catalogue of shadcn blocks you can
+browse by category. Content lives under `apps/web/docs`; Blume provides the
+site shell, navigation, search, SEO, and AI-readable outputs.
 
 ## Development
 

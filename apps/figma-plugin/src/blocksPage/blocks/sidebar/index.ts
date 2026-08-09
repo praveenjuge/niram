@@ -16,7 +16,7 @@ import { styleComponentSet } from "../../../componentsPage/layout";
 import { countDescendants } from "../../utils";
 import type { BlocksInputs } from "../../types";
 import { SIDEBAR_VARIANTS } from "./variants";
-import { slotifyMenus } from "./primitives";
+import { slotifyMenus } from "./slots";
 
 // The set spans the full block-canvas width (1512) rather than the narrower
 // component-grid SECTION_WIDTH (1120), so the 16 rails have room to wrap.

@@ -35,12 +35,18 @@ import {
   createMenuButton,
   createMenuSub,
   createMenuSubButton,
-  createSearchField,
   createSeparator,
   createSidebarShell,
   fillHeight,
   iconCandidates,
 } from "./primitives";
+import {
+  createProjectRow,
+  createSearchField,
+  createTeamSwitcher,
+  createUserMenu,
+  createWorkspaceRow,
+} from "./reusable";
 import {
   bindCornerRadii,
   bindFill,
@@ -306,12 +312,10 @@ function buildSidebar07(inputs: BlocksInputs): ComponentNode {
   const header = createHeader();
   appendFill(
     header,
-    createMenuButton(inputs, {
+    createTeamSwitcher(inputs, {
       label: "Acme Inc",
       subtitle: "Enterprise",
-      brand: true,
       icon: "gallery-vertical-end",
-      size: "lg",
       trailingIcon: "chevrons-up-down",
     }),
   );
@@ -338,12 +342,10 @@ function buildSidebar08(inputs: BlocksInputs): ComponentNode {
   const header = createHeader();
   appendFill(
     header,
-    createMenuButton(inputs, {
+    createTeamSwitcher(inputs, {
       label: "Acme Inc",
       subtitle: "Enterprise",
-      brand: true,
       icon: "command",
-      size: "lg",
     }),
   );
   appendFill(comp, header);
@@ -692,12 +694,10 @@ function buildSidebar16(inputs: BlocksInputs): ComponentNode {
   const header = createHeader();
   appendFill(
     header,
-    createMenuButton(inputs, {
+    createTeamSwitcher(inputs, {
       label: "Acme Inc",
       subtitle: "Enterprise",
-      brand: true,
       icon: "command",
-      size: "lg",
     }),
   );
   appendFill(comp, header);
@@ -760,14 +760,7 @@ function buildProjectsGroup(inputs: BlocksInputs): FrameNode {
   appendFill(g, createGroupLabel(inputs, "Projects"));
   const menu = createMenu();
   for (const project of PROJECTS) {
-    appendFill(
-      menu,
-      createMenuButton(inputs, {
-        label: project.name,
-        icon: project.icon,
-        trailingIcon: "more-horizontal",
-      }),
-    );
+    appendFill(menu, createProjectRow(inputs, project.name, project.icon));
   }
   appendFill(
     menu,
@@ -790,14 +783,7 @@ function buildEmojiGroup(
   appendFill(g, createGroupLabel(inputs, label));
   const menu = createMenu();
   for (const name of items) {
-    appendFill(
-      menu,
-      createMenuButton(inputs, {
-        label: name,
-        icon: "file-text",
-        trailingIcon: "more-horizontal",
-      }),
-    );
+    appendFill(menu, createProjectRow(inputs, name, "file-text"));
   }
   appendFill(
     menu,
@@ -816,14 +802,7 @@ function buildWorkspacesGroup(inputs: BlocksInputs): FrameNode {
   appendFill(g, createGroupLabel(inputs, "Workspaces"));
   const menu = createMenu();
   for (const name of WORKSPACES) {
-    appendFill(
-      menu,
-      createMenuButton(inputs, {
-        label: name,
-        icon: "folder",
-        trailingIcon: "chevron-right",
-      }),
-    );
+    appendFill(menu, createWorkspaceRow(inputs, name));
   }
   appendFill(
     menu,
@@ -838,13 +817,7 @@ function buildWorkspacesGroup(inputs: BlocksInputs): FrameNode {
 }
 
 function buildUserButton(inputs: BlocksInputs): SceneNode {
-  return createMenuButton(inputs, {
-    label: USER.name,
-    subtitle: USER.email,
-    avatar: true,
-    size: "lg",
-    trailingIcon: "chevrons-up-down",
-  });
+  return createUserMenu(inputs, USER.name, USER.email);
 }
 
 // sidebar-06 newsletter opt-in card.

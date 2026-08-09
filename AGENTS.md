@@ -12,15 +12,15 @@ This repo is a Bun workspace monorepo with two apps under `apps/`:
 
 - `apps/figma-plugin` (`@niram/figma-plugin`) - the Figma plugin. Everything
   below describes this app unless stated otherwise.
-- `apps/web` (`@niram/web`) - the Niram website, a TanStack Start (React) app
-  styled with Tailwind CSS v4 and shadcn/ui (scaffolded from the `b0` shadcn
-  preset).
+- `apps/web` (`@niram/web`) - the Niram website and block catalogue, built with
+  Blume. Markdown/MDX under `docs/` owns the content and navigation; Blume owns
+  the Astro/Vite runtime, site chrome, search, SEO, and AI-readable outputs.
 
 Dependencies install in isolated (pnpm-style) mode via the root `bunfig.toml`
 (`[install] linker = "isolated"`) so each app keeps its own toolchain. This is
-required: the plugin pins Vite 5 (through Vitest) while the website needs
-Vite 8 (through TanStack Start), and hoisting would force a single, wrong Vite
-onto `@tailwindcss/vite`. Don't switch the workspace back to hoisted installs.
+required: the plugin pins Vite 5 through Vitest, while Blume owns the website's
+current Astro/Vite toolchain. Don't switch the workspace back to hoisted
+installs.
 
 ## Agent startup
 
@@ -92,10 +92,10 @@ bun run gen-icons  # regenerate apps/figma-plugin/src/data/icons.ts (shadcn icon
 Website (`@niram/web`) scripts, run from the repo root:
 
 ```bash
-bun run web:dev        # TanStack Start dev server (vite, port 3000)
-bun run web:build      # build client + SSR bundles -> apps/web/dist
+bun run web:dev        # Blume dev server (port 3000)
+bun run web:build      # build the static Blume site -> apps/web/dist
 bun run web:preview    # preview the production build
-bun run web:typecheck  # tsc --noEmit
+bun run web:typecheck  # Blume/Astro typecheck
 ```
 
 After changes, run `bun run typecheck`, `bun run test`, and `bun run build`. Tests
@@ -148,11 +148,12 @@ apps/figma-plugin/scripts/
   gen-avatar-images.mjs # regenerates src/data/avatars.ts from pravatar.cc
   gen-icons.mjs      # regenerates src/data/icons.ts from the icon-library packages
 apps/figma-plugin/manifest.json        # Figma plugin manifest
-apps/web/            # @niram/web - TanStack Start + React + Tailwind v4 + shadcn website
-  src/routes/        # file-based routes (__root, index, category/$slug)
-  src/components/ui/ # shadcn/ui components
-  src/styles.css     # Tailwind v4 + theme tokens
-  components.json    # shadcn CLI config (radix-nova style)
+apps/web/            # @niram/web - Blume website and block catalogue
+  docs/              # Markdown/MDX content and file-derived navigation
+  components/        # static Astro MDX components, including BlockPreview
+  blume.config.ts    # site metadata and Blume configuration
+  components.ts      # MDX component registration
+  theme.css          # project-level Blume theme extensions
 bunfig.toml          # Bun config: isolated (pnpm-style) workspace installs
 shadcn-ui/           # local clone, git-ignored, reference only
 ```

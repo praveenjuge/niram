@@ -1,0 +1,177 @@
+---
+type BlockPreview = {
+  title: string;
+  description: string;
+  size: "default" | "sm" | "xs";
+  fields?: Array<{ label: string; type?: string; value?: string }>;
+  details?: string[];
+  actions?: Array<{
+    label: string;
+    variant?: "default" | "outline" | "ghost";
+  }>;
+};
+
+type Props = {
+  slug: keyof typeof previews;
+};
+
+const previews = {
+  "login-workspace": {
+    title: "Sign in to Acme",
+    description: "Use your work email to continue.",
+    size: "sm",
+    fields: [
+      { label: "name@company.com", type: "email" },
+      { label: "Password", type: "password" },
+    ],
+    actions: [
+      { label: "Reset password", variant: "ghost" },
+      { label: "Sign in" },
+    ],
+  },
+  "signup-team": {
+    title: "Create your workspace",
+    description: "Start with the essentials. Invite people later.",
+    size: "sm",
+    fields: [
+      { label: "Workspace name" },
+      { label: "you@company.com", type: "email" },
+      { label: "Create password", type: "password" },
+    ],
+    actions: [{ label: "Create workspace" }],
+  },
+  "password-recovery": {
+    title: "Reset your password",
+    description: "We will send a secure reset link if the account exists.",
+    size: "sm",
+    fields: [{ label: "name@company.com", type: "email" }],
+    actions: [
+      { label: "Back", variant: "ghost" },
+      { label: "Send link" },
+    ],
+  },
+  "invite-acceptance": {
+    title: "Join Northstar Studio",
+    description: "Praveen invited you to collaborate.",
+    size: "sm",
+    fields: [
+      { label: "Email", type: "email", value: "name@company.com" },
+      { label: "Full name" },
+    ],
+    actions: [
+      { label: "Decline", variant: "outline" },
+      { label: "Accept invite" },
+    ],
+  },
+  "profile-settings": {
+    title: "Profile",
+    description: "Keep your public account details current.",
+    size: "default",
+    fields: [
+      { label: "Full name", value: "Praveen Juge" },
+      { label: "Role", value: "Lead Designer" },
+    ],
+    actions: [{ label: "Save changes" }],
+  },
+  "team-settings": {
+    title: "Team",
+    description: "Invite teammates with the right workspace context.",
+    size: "default",
+    fields: [
+      { label: "teammate@company.com", type: "email" },
+      { label: "Role", value: "Member" },
+    ],
+    actions: [{ label: "Send invite" }],
+  },
+  "notification-settings": {
+    title: "Notifications",
+    description: "Choose the updates that should reach your inbox.",
+    size: "default",
+    details: [
+      "Product updates: Weekly digest",
+      "Security alerts: Immediately",
+    ],
+    actions: [{ label: "Update preferences" }],
+  },
+  "billing-settings": {
+    title: "Billing",
+    description: "Manage your plan and next renewal.",
+    size: "default",
+    details: ["Pro plan · 12 seats", "Next invoice: Aug 1, 2026"],
+    actions: [
+      { label: "Invoices", variant: "outline" },
+      { label: "Manage plan" },
+    ],
+  },
+  "metric-card": {
+    title: "12,840",
+    description: "Active subscribers · Up 8.2% from last month",
+    size: "xs",
+  },
+  "payment-method-card": {
+    title: "Visa ending 4242",
+    description: "Expires 09/28 · Default payment method",
+    size: "xs",
+    actions: [{ label: "Update", variant: "outline" }],
+  },
+  "team-member-card": {
+    title: "Amara Chen",
+    description: "Product Manager · Workspace admin",
+    size: "xs",
+    actions: [
+      { label: "Message", variant: "ghost" },
+      { label: "Manage", variant: "outline" },
+    ],
+  },
+  "support-ticket-card": {
+    title: "Invoice export failed",
+    description: "Open · Billing · Last updated 12m ago",
+    size: "xs",
+    actions: [{ label: "View ticket" }],
+  },
+} as const satisfies Record<string, BlockPreview>;
+
+const preview = previews[Astro.props.slug];
+---
+
+<article class="niram-preview not-prose" data-size={preview.size}>
+  <hgroup>
+    <h3>{preview.title}</h3>
+    <p>{preview.description}</p>
+  </hgroup>
+  {
+    preview.fields?.length === 2 ? (
+      <div class="niram-row">
+        {preview.fields.map((field) => (
+          <input
+            aria-label={field.label}
+            placeholder={field.label}
+            type={field.type ?? "text"}
+            value={field.value}
+          />
+        ))}
+      </div>
+    ) : (
+      preview.fields?.map((field) => (
+        <input
+          aria-label={field.label}
+          placeholder={field.label}
+          type={field.type ?? "text"}
+          value={field.value}
+        />
+      ))
+    )
+  }
+  {preview.details?.map((detail) => <p class="niram-detail">{detail}</p>)}
+  {
+    preview.actions && (
+      <footer>
+        {preview.actions.map((action) => (
+          <button data-variant={action.variant ?? "default"} type="button">
+            {action.label}
+          </button>
+        ))}
+      </footer>
+    )
+  }
+</article>

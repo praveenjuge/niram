@@ -1,0 +1,32 @@
+---
+title: Getting started
+description: Install Niram from the Figma Community, choose a shadcn/ui preset, and generate a complete native design system in your Figma file.
+sidebar:
+  order: 1
+---
+
+Niram runs inside Figma and generates everything locally in the file where you launch it.
+
+<Steps>
+  <Step title="Install the plugin">
+    Open [Niram in the Figma Community](https://www.figma.com/community/plugin/1642487887236877076/niram-shadcn-design-system-generator) and select **Open in Figma**.
+  </Step>
+  <Step title="Choose a preset">
+    Build a theme with [shadcn Create](https://ui.shadcn.com/create), then copy its preset code.
+  </Step>
+  <Step title="Generate">
+    In Figma, run **Generate from preset…**, paste the code, and wait for Niram to finish the Design System, Components, and Blocks regions.
+  </Step>
+</Steps>
+
+## Try a random system
+
+Choose **Shuffle a random preset** when you want to explore without preparing a preset first. Niram picks a bundled shadcn theme and runs the same generation flow.
+
+## Regenerate safely
+
+Run Niram again in the same file to apply a different preset. Existing variable collections and styles are updated in place, and each generated region rebuilds only the frames it owns.
+
+:::note
+Everything is generated on one page named `Niram` to remain compatible with Figma Starter files and their three-page limit.
+:::

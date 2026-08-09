@@ -401,4 +401,58 @@ describe("sidebar block reuses the published atoms", () => {
     const instances = collect(sidebar13, (n) => n.type === "INSTANCE");
     expect(instances.length).toBe(12);
   });
+
+  it("composes matching templates from the dedicated sidebar structures", async () => {
+    const inputs = await makeInputsOnComponentsPage();
+    const page = inputs.targetPage as unknown as { children: FakeNode[] };
+    const existing = new Set(page.children);
+
+    await addSidebarBlock(inputs.targetPage as never, inputs);
+
+    const added = page.children.filter((child) => !existing.has(child));
+    const set = added
+      .map((node) => findSetNamed(node, "Sidebar"))
+      .find((candidate): candidate is FakeNode => Boolean(candidate))!;
+
+    const sidebar01 = set.children.find(
+      (child) => child.name === "Variant=sidebar-01",
+    )!;
+    expect(
+      collect(
+        sidebar01,
+        (node) =>
+          node.type === "INSTANCE" && node.name === "Sidebar Search",
+      ).length,
+    ).toBeGreaterThan(0);
+
+    const sidebar07 = set.children.find(
+      (child) => child.name === "Variant=sidebar-07",
+    )!;
+    for (const name of [
+      "Sidebar Team Switcher",
+      "Sidebar Project Row",
+      "Sidebar User Menu",
+    ]) {
+      expect(
+        collect(
+          sidebar07,
+          (node) => node.type === "INSTANCE" && node.name === name,
+        ).length,
+        `${name} is not reused by sidebar-07`,
+      ).toBeGreaterThan(0);
+    }
+
+    const sidebar10 = set.children.find(
+      (child) => child.name === "Variant=sidebar-10",
+    )!;
+    for (const name of ["Sidebar Project Row", "Sidebar Workspace Row"]) {
+      expect(
+        collect(
+          sidebar10,
+          (node) => node.type === "INSTANCE" && node.name === name,
+        ).length,
+        `${name} is not reused by sidebar-10`,
+      ).toBeGreaterThan(0);
+    }
+  });
 });

@@ -308,7 +308,7 @@ export const componentDocs: Record<string, ComponentDocEntry> = {
   "Sidebar Menu Button": entry(
     "sidebar",
     "The core sidebar nav row: a leading icon, a label, and an optional trailing chevron. Drop instances into a Sidebar Menu to build a rail.",
-    "The `State` axis covers default and active (`bg-sidebar-accent`); `Size` covers default, sm, and lg. Edit the `Label`, swap the `Icon`, and toggle `Trailing`.",
+    "State covers default/active, Size covers sm/default/lg, and Display switches expanded/icon-only. Labels, subtitle, badge, and both icons are instance properties.",
   ),
   "Sidebar Menu Sub Button": entry(
     "sidebar",
@@ -327,6 +327,38 @@ export const componentDocs: Record<string, ComponentDocEntry> = {
     "sidebar",
     "Composed sidebar menus as a variant set, built from Sidebar Menu Button instances inside an Items slot. Drop in more button instances to extend a menu.",
     "The `Variant` axis covers a flat menu (default), a labeled group (labeled), and a menu with a nested submenu (submenu); the `Items` slot offers the Sidebar Menu Button as its preferred insert.",
+  ),
+  "Sidebar Project Row": entry(
+    "sidebar",
+    "A reusable project navigation row with editable text and swappable leading and trailing icons.",
+    "Switch State between expanded and collapsed to move the same row into a full or icon-only rail.",
+  ),
+  "Sidebar Workspace Row": entry(
+    "sidebar",
+    "A reusable workspace navigation row for switching between folders or workspaces in a sidebar.",
+    "The expanded/collapsed State axis keeps workspace navigation interchangeable across shell sizes.",
+  ),
+  "Sidebar Search": entry(
+    "sidebar",
+    "The sidebar search field with an editable placeholder and a compact icon-only state.",
+  ),
+  "Sidebar Team Switcher": entry(
+    "sidebar",
+    "A team or organization switcher with editable name, supporting plan text, brand icon, and trailing control.",
+  ),
+  "Sidebar User Menu": entry(
+    "sidebar",
+    "A reusable sidebar footer control for the signed-in user's name, email, avatar, and account-menu trigger.",
+  ),
+  "Sidebar Group": entry(
+    "sidebar",
+    "A labeled navigation group whose Items slot accepts project, workspace, and menu-button instances.",
+    "Add, remove, and reorder rows inside the slot without detaching the group.",
+  ),
+  "Sidebar Shell": entry(
+    "sidebar",
+    "A full-height composable sidebar with Header, Navigation, Secondary Navigation, and Footer slots.",
+    "State controls expanded/collapsed width, Side controls the border edge, and Style covers sidebar, floating, and inset treatments.",
   ),
 
   // --- Blocks region -------------------------------------------------------

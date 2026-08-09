@@ -1,7 +1,7 @@
 [install]
 # Use pnpm-style isolated installs so each workspace resolves only its own
-# declared dependencies. The figma-plugin pins vite 5 (via vitest 2) while the
-# web app needs vite 8 (via TanStack Start); hoisting would force a single,
-# wrong vite onto @tailwindcss/vite. Isolation keeps each app's toolchain
-# self-contained.
+# declared dependencies. The figma-plugin pins Vite 5 (via Vitest 2), while
+# Blume owns the website's current Astro/Vite toolchain. Hoisting would force
+# incompatible build dependencies into one resolution. Isolation keeps each
+# app's toolchain self-contained.
 linker = "isolated"

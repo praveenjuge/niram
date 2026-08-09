@@ -28,15 +28,23 @@ import {
   bindStrokeColor,
 } from "../bindings";
 import { applyFont } from "../../fonts";
-import { createIcon, instantiateIcon, resolveIconLibrary } from "../../icons";
+import {
+  createIcon,
+  instantiateIcon,
+  resolveIconLibrary,
+  resolveIconName,
+} from "../../icons";
 import { styleComponentSet, wrapInSectionCard } from "../layout";
 import {
   collectByTypeAndName,
   createConfiguredSlot,
+  defineBooleanProperty,
+  defineIconSwapProperty,
   defineTextProperty,
 } from "../properties";
-import type { ComponentsInputs } from "../types";
+import { SECTION_WIDTH, type ComponentsInputs } from "../types";
 import { countDescendants } from "../utils";
+import { buildSidebarStructures } from "./sidebarStructures";
 
 // The shared menu-button width: wide enough to read as a real nav row while
 // still happy to stretch to FILL when dropped into a sidebar's menu slot.
@@ -47,6 +55,9 @@ type MenuButtonState = (typeof MENU_BUTTON_STATES)[number];
 
 const MENU_BUTTON_SIZES = ["default", "sm", "lg"] as const;
 type MenuButtonSize = (typeof MENU_BUTTON_SIZES)[number];
+
+const MENU_BUTTON_DISPLAYS = ["expanded", "icon"] as const;
+type MenuButtonDisplay = (typeof MENU_BUTTON_DISPLAYS)[number];
 
 // radix-nova SidebarMenuButton heights: default `h-8` (32), sm `h-7` (28),
 // lg `h-12` (48).
@@ -81,15 +92,28 @@ export async function addSidebarSection(
   page: PageNode,
   inputs: ComponentsInputs,
 ): Promise<number> {
-  let count = 0;
+  // Keep the entire sidebar library in one deterministic Components-region
+  // section. The individual sets remain publishable; this frame only groups
+  // them on the generated canvas so the page builder still receives exactly
+  // one top-level node from this section builder.
+  const section = figma.createFrame();
+  section.name = "Sidebar";
+  section.layoutMode = "VERTICAL";
+  section.primaryAxisSizingMode = "AUTO";
+  section.counterAxisSizingMode = "FIXED";
+  section.itemSpacing = 32;
+  section.fills = [];
+  section.strokes = [];
+  section.resize(SECTION_WIDTH, 1);
+  section.primaryAxisSizingMode = "AUTO";
 
-  // 1) Sidebar Menu Button — the workhorse nav row (State × Size).
+  // 1) Sidebar Menu Button — the workhorse nav row (State × Size × Display).
   const buttonSet = buildMenuButtonSet(page, inputs);
-  count += countDescendants(buttonSet);
+  section.appendChild(buttonSet);
 
   // 2) Sidebar Menu Sub Button — the nested sub-item row (State).
   const subButtonSet = buildMenuSubButtonSet(page, inputs);
-  count += countDescendants(subButtonSet);
+  section.appendChild(subButtonSet);
 
   // 3) Sidebar Group Label — the muted section caption.
   const groupLabel = buildGroupLabel(inputs);
@@ -100,14 +124,12 @@ export async function addSidebarSection(
     collectByTypeAndName(groupLabel, "TEXT", "Label"),
   );
   const groupLabelCard = wrapInSectionCard(groupLabel);
-  page.appendChild(groupLabelCard);
-  count += countDescendants(groupLabelCard);
+  section.appendChild(groupLabelCard);
 
   // 4) Sidebar Separator — the `h-px bg-sidebar-border` divider.
   const separator = buildSeparator(inputs);
   const separatorCard = wrapInSectionCard(separator);
-  page.appendChild(separatorCard);
-  count += countDescendants(separatorCard);
+  section.appendChild(separatorCard);
 
   // 5) Sidebar Menu — composed menus as a variant set (default / labeled /
   // submenu), each built from button / sub-button / group-label instances with
@@ -119,9 +141,18 @@ export async function addSidebarSection(
     subButtonSet,
     groupLabel,
   );
-  count += countDescendants(menuSet);
+  section.appendChild(menuSet);
 
-  return count;
+  // 6) Higher-level interchangeable structures: dedicated project/workspace
+  // rows, search, team/user controls, slotted groups, and the shell itself.
+  const structures = buildSidebarStructures(page, inputs, {
+    groupLabel,
+    buttonSet,
+  });
+  for (const structure of structures) section.appendChild(structure);
+
+  page.appendChild(section);
+  return countDescendants(section);
 }
 
 // ----- Sidebar Menu Button -------------------------------------------------
@@ -133,9 +164,11 @@ function buildMenuButtonSet(
   const components: ComponentNode[] = [];
   for (const state of MENU_BUTTON_STATES) {
     for (const size of MENU_BUTTON_SIZES) {
-      const comp = buildMenuButton(inputs, state, size);
-      page.appendChild(comp);
-      components.push(comp);
+      for (const display of MENU_BUTTON_DISPLAYS) {
+        const comp = buildMenuButton(inputs, state, size, display);
+        page.appendChild(comp);
+        components.push(comp);
+      }
     }
   }
 
@@ -154,13 +187,58 @@ function buildMenuButtonSet(
     "Menu Item",
     collectByTypeAndName(set, "TEXT", "Label"),
   );
+  defineTextProperty(
+    set,
+    "Subtitle",
+    "Supporting text",
+    collectByTypeAndName(set, "TEXT", "Subtitle"),
+  );
+  defineBooleanProperty(
+    set,
+    "Show subtitle",
+    false,
+    collectFromDisplay(set, "expanded", "TEXT", "Subtitle"),
+  );
+  defineTextProperty(
+    set,
+    "Badge",
+    "1",
+    collectByTypeAndName(set, "TEXT", "Badge"),
+  );
+  defineBooleanProperty(
+    set,
+    "Show badge",
+    false,
+    collectFromDisplay(set, "expanded", "TEXT", "Badge"),
+  );
+  defineBooleanProperty(
+    set,
+    "Show leading icon",
+    true,
+    collectByTypeAndName(set, "INSTANCE", "Icon"),
+  );
+  defineBooleanProperty(
+    set,
+    "Show trailing icon",
+    false,
+    collectFromDisplay(set, "expanded", "INSTANCE", "Trailing"),
+  );
 
-  // The leading + trailing glyphs are swappable Design System icon-set
-  // instances (when the set is available), so designers can swap them from the
-  // nested-instance menu and the Sidebar rails can swap each row's glyph
-  // directly. They're left unbound to component properties on purpose — binding
-  // `visible`/`mainComponent` to a property would stop the rails from
-  // overriding those nested layers per-row.
+  const library = resolveIconLibrary(inputs.presetSummary);
+  const leadingName = resolveIconName(library, "folder");
+  const trailingName = resolveIconName(library, "chevron-right");
+  defineIconSwapProperty(
+    set,
+    "Leading icon",
+    leadingName ? inputs.iconComponents?.get(leadingName) : undefined,
+    collectByTypeAndName(set, "INSTANCE", "Icon"),
+  );
+  defineIconSwapProperty(
+    set,
+    "Trailing icon",
+    trailingName ? inputs.iconComponents?.get(trailingName) : undefined,
+    collectByTypeAndName(set, "INSTANCE", "Trailing"),
+  );
 
   return set;
 }
@@ -169,13 +247,14 @@ function buildMenuButton(
   inputs: ComponentsInputs,
   state: MenuButtonState,
   size: MenuButtonSize,
+  display: MenuButtonDisplay,
 ): ComponentNode {
   const t = inputs.theme.light;
   const p = inputs.primitives;
   const active = state === "active";
 
   const comp = figma.createComponent();
-  comp.name = `State=${state}, Size=${size}`;
+  comp.name = `State=${state}, Size=${size}, Display=${display}`;
   comp.layoutMode = "HORIZONTAL";
   comp.primaryAxisSizingMode = "FIXED";
   comp.counterAxisSizingMode = "FIXED";
@@ -183,7 +262,8 @@ function buildMenuButton(
   comp.itemSpacing = 8;
   comp.paddingLeft = 8;
   comp.paddingRight = 8;
-  comp.resize(BUTTON_WIDTH, MENU_BUTTON_HEIGHT[size]);
+  const height = MENU_BUTTON_HEIGHT[size];
+  comp.resize(display === "icon" ? height : BUTTON_WIDTH, height);
   comp.cornerRadius = 6;
   bindCornerRadii(comp, p.get("radius/md"));
   comp.strokes = [];
@@ -218,6 +298,16 @@ function buildMenuButton(
     comp.appendChild(icon);
   }
 
+  const text = figma.createFrame();
+  text.name = "Text";
+  text.layoutMode = "VERTICAL";
+  text.primaryAxisSizingMode = "AUTO";
+  text.counterAxisSizingMode = "AUTO";
+  text.itemSpacing = 0;
+  text.fills = [];
+  text.strokes = [];
+  text.visible = display === "expanded";
+
   const label = figma.createText();
   applyFont(label, "body", active ? "Medium" : "Regular");
   label.name = "Label";
@@ -225,8 +315,34 @@ function buildMenuButton(
   label.fontSize = 14;
   bindFontSize(label, p.get("font/size/sm"));
   bindFill(label, fg);
-  comp.appendChild(label);
+  text.appendChild(label);
   growText(label);
+
+  const subtitle = figma.createText();
+  applyFont(subtitle, "body", "Regular");
+  subtitle.name = "Subtitle";
+  subtitle.characters = "Supporting text";
+  subtitle.fontSize = 12;
+  bindFontSize(subtitle, p.get("font/size/xs"));
+  bindFill(subtitle, fg);
+  subtitle.opacity = 0.7;
+  subtitle.visible = false;
+  text.appendChild(subtitle);
+  growText(subtitle);
+
+  comp.appendChild(text);
+  text.layoutGrow = 1;
+  growHorizontal(text);
+
+  const badge = figma.createText();
+  applyFont(badge, "body", "Medium");
+  badge.name = "Badge";
+  badge.characters = "1";
+  badge.fontSize = 12;
+  bindFontSize(badge, p.get("font/size/xs"));
+  bindFill(badge, fg);
+  badge.visible = false;
+  comp.appendChild(badge);
 
   // Trailing icon — hidden by default; the "Trailing" boolean toggles it and
   // the "Trailing Icon" swap (or the rails' block code) sets the glyph. A
@@ -444,8 +560,14 @@ function buildMenu(
 
   // The repeated rows live in the Items slot, seeded with button instances. The
   // submenu variant nests a SidebarMenuSub of sub-button instances after them.
-  const def = findVariant(buttonSet, "State=default, Size=default");
-  const act = findVariant(buttonSet, "State=active, Size=default");
+  const def = findVariant(
+    buttonSet,
+    "State=default, Size=default, Display=expanded",
+  );
+  const act = findVariant(
+    buttonSet,
+    "State=active, Size=default, Display=expanded",
+  );
   const rows = variant === "submenu" ? [def, act] : [def, act, def];
 
   const items: SceneNode[] = [];
@@ -545,6 +667,25 @@ function findVariant(
   return undefined;
 }
 
+function collectFromDisplay(
+  set: ComponentSetNode,
+  display: MenuButtonDisplay,
+  type: string,
+  name: string,
+) {
+  const out: ReturnType<typeof collectByTypeAndName> = [];
+  for (const child of set.children) {
+    if (
+      child.type !== "COMPONENT" ||
+      child.name.indexOf(`Display=${display}`) === -1
+    ) {
+      continue;
+    }
+    out.push(...collectByTypeAndName(child, type, name));
+  }
+  return out;
+}
+
 // Create an instance of a source component, guarded so hosts without
 // createInstance (or a missing source variant) degrade to nothing.
 function instanceOf(
@@ -554,8 +695,11 @@ function instanceOf(
   return source.createInstance();
 }
 
-// Stretch a label to fill its row's primary axis (so it truncates rather than
-// pushing the trailing affordance). Guarded — some hosts reject FILL.
+// Stretch a label to fill its row's primary axis and clamp it to one line.
+// Sidebar rows have fixed heights, so allowing the text box to grow to a
+// second line makes long instance overrides overlap the following row. This
+// mirrors shadcn's `truncate` utility: constrain the width, then ellipsize the
+// first line.
 function growText(node: TextNode): void {
   try {
     (node as unknown as { layoutGrow: number }).layoutGrow = 1;
@@ -568,6 +712,13 @@ function growText(node: TextNode): void {
     ).layoutSizingHorizontal = "FILL";
   } catch {
     // Keep intrinsic width.
+  }
+  try {
+    node.textAutoResize = "HEIGHT";
+    node.textTruncation = "ENDING";
+    node.maxLines = 1;
+  } catch {
+    // Older hosts keep their default text behavior.
   }
 }
 

@@ -1,0 +1,62 @@
+@theme inline {
+  --font-heading: var(--font-display);
+}
+
+@layer components {
+  .niram-preview {
+    @apply my-5 grid min-h-80 w-full content-center gap-4 rounded-xl border bg-muted/30 p-6 text-sm shadow-sm;
+  }
+
+  .niram-preview > hgroup {
+    @apply grid gap-1;
+  }
+
+  .niram-preview > hgroup > h3 {
+    @apply m-0 text-base font-medium tracking-tight text-foreground;
+  }
+
+  .niram-preview > hgroup > p,
+  .niram-preview > p {
+    @apply m-0 text-sm text-muted-foreground;
+  }
+
+  .niram-preview > input {
+    @apply h-9 w-full rounded-md border bg-background px-3 text-foreground shadow-xs outline-none placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-accent;
+  }
+
+  .niram-preview > .niram-row {
+    @apply grid gap-3 sm:grid-cols-2;
+  }
+
+  .niram-preview > .niram-row > input {
+    @apply h-9 min-w-0 rounded-md border bg-background px-3 text-foreground shadow-xs outline-none placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-accent;
+  }
+
+  .niram-preview > .niram-detail {
+    @apply rounded-lg border bg-background p-3 text-foreground;
+  }
+
+  .niram-preview > footer {
+    @apply flex flex-wrap items-center justify-end gap-2 border-t pt-4;
+  }
+
+  .niram-preview > footer > button {
+    @apply inline-flex h-8 items-center justify-center rounded-md border border-transparent bg-foreground px-3 text-sm font-medium text-background transition-colors hover:opacity-80 focus-visible:outline-2 focus-visible:outline-accent;
+  }
+
+  .niram-preview > footer > button[data-variant="outline"] {
+    @apply border-border bg-background text-foreground hover:bg-muted;
+  }
+
+  .niram-preview > footer > button[data-variant="ghost"] {
+    @apply bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground;
+  }
+
+  .niram-preview[data-size="sm"] {
+    @apply mx-auto max-w-sm;
+  }
+
+  .niram-preview[data-size="xs"] {
+    @apply mx-auto min-h-56 max-w-xs;
+  }
+}
