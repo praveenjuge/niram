@@ -184,7 +184,8 @@ function buildFallbackInput(
   input.paddingRight = 10;
   input.cornerRadius = 8;
   bindCornerRadii(input, p.get("radius/lg"));
-  bindFill(input, t.get("background"));
+  // presets use bg-transparent / dark:bg-input/30
+  input.fills = [];
   bindStrokeColor(input, t.get("input"));
   input.strokeWeight = 1;
 

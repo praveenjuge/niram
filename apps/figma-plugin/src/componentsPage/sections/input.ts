@@ -76,7 +76,8 @@ function buildInputComponent(
   comp.itemSpacing = 6;
   comp.cornerRadius = 8;
   bindCornerRadii(comp, p.get("radius/lg"));
-  bindFill(comp, t.get("background"));
+  // presets (nova etc.) use bg-transparent (light) / dark:bg-input/30 — not bg-background
+  comp.fills = [];
 
   // Border per state. Focus uses a 1px ring border + the focus ring shadow;
   // invalid keeps the 1px border and only swaps the colour to destructive.
