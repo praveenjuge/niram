@@ -27,10 +27,10 @@ describe("addButtonSection", () => {
     //   48 text buttons (6 × 4 non-icon sizes) × 4 states = 96 comps, each
     //     wrapping a single label node → 96 × 2 = 192 nodes.
     //   48 icon buttons (6 × 4 icon sizes) × 4 states = 96 comps, each
-    //     wrapping a rendered icon (mock createNodeFromSvg → frame + vector)
-    //     → 96 × 3 = 288 nodes.
-    //   1 (set) + 192 + 288 = 481.
-    expect(count).toBe(481);
+    //     wrapping a rendered icon (mock createNodeFromSvg for "plus" → frame
+    //     + 2 vectors) → 96 × 4 = 384 nodes.
+    //   1 (set) + 192 + 384 = 577.
+    expect(count).toBe(577);
 
     expect(page.children).toHaveLength(1);
     const set = page.children[0]!;

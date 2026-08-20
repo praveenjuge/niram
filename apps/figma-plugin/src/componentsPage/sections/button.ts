@@ -7,11 +7,21 @@ import {
   bindStrokeColor,
 } from "../bindings";
 import { applyFont } from "../../fonts";
-import { createIcon, resolveIconLibrary } from "../../icons";
+import {
+  createIcon,
+  instantiateIcon,
+  recolorIcon,
+  resolveIconLibrary,
+  resolveIconName,
+} from "../../icons";
 import { styleComponentSet } from "../layout";
 import { type ComponentsInputs } from "../types";
 import { countDescendants } from "../utils";
-import { collectByTypeAndName, defineTextProperty } from "../properties";
+import {
+  collectByTypeAndName,
+  defineIconSwapProperty,
+  defineTextProperty,
+} from "../properties";
 
 const BUTTON_VARIANTS = [
   "default",
@@ -87,6 +97,26 @@ export async function addButtonSection(
     collectByTypeAndName(componentSet, "TEXT", "Label"),
   );
 
+  // When the published icon set is available, the icon-only variants use real
+  // instances of it — expose an "Icon" instance-swap property so designers can
+  // swap the glyph from Figma's instance menu and it stays in sync with the
+  // published set (mirrors Toggle).
+  if (inputs.iconComponents) {
+    const iconName = resolveIconName(
+      resolveIconLibrary(inputs.presetSummary),
+      "plus",
+    );
+    const source = iconName
+      ? inputs.iconComponents.get(iconName)
+      : undefined;
+    defineIconSwapProperty(
+      componentSet,
+      "Icon",
+      source as unknown as { key?: string; parent?: { type: string } },
+      collectByTypeAndName(componentSet, "INSTANCE", "Icon"),
+    );
+  }
+
   return countDescendants(componentSet);
 }
 
@@ -146,9 +176,29 @@ function buildButtonComponent(
     buttonLabelColorVar(variant, t, inputs.tailwindColors);
 
   if (isIconSize(size)) {
-    // Icon-only button: render a real icon from the preset's icon library,
-    // tinted to match the variant's label colour. Falls back to a `★` glyph
-    // when the active library has no candidate for the semantic icon.
+    // Icon-only button: prefer a real instance of the Design System icon set
+    // (so it is swappable and stays in sync), falling back to a baked vector
+    // tinted to the variant's label colour when the set isn't available (isolated
+    // callers/tests).
+    if (inputs.iconComponents) {
+      const instance = instantiateIcon({
+        icons: inputs.iconComponents,
+        library: resolveIconLibrary(inputs.presetSummary),
+        name: "plus",
+        size: size === "icon-xs" ? 14 : 16,
+      });
+      if (instance) {
+        instance.name = "Icon";
+        // Tint the instance to the variant's label colour so the icon matches
+        // the text (e.g. primary-foreground on the default variant, white on
+        // destructive). The instance inherits the icon set's foreground until we
+        // rebind it here.
+        recolorIcon(instance as unknown as SceneNode, labelColor);
+        comp.appendChild(instance);
+        return comp;
+      }
+    }
+
     const icon = createIcon({
       library: resolveIconLibrary(inputs.presetSummary),
       name: "plus",

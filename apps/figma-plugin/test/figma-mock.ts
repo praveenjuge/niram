@@ -358,17 +358,63 @@ export function createFigmaMock() {
     return node;
   }
 
+  // Clone a node subtree for instance creation. Mirrors Figma's behaviour
+  // where an INSTANCE contains cloned geometry so `recolorIcon` can traverse
+  // and rebind paints on the instance's vectors (e.g. Button icons tinted to
+  // primary-foreground rather than the icon set's foreground). Slots are not
+  // cloned — a component's slot is an instance-insertion point, not concrete
+  // geometry; cloning it into every instance would double-count slots when
+  // the test walks the tree (the Sidebar Shell test enumerates only the
+  // shell's own slots).
+  function cloneNode(source: FakeNode): FakeNode {
+    if (source.type === "SLOT") return makeNode("SLOT") as unknown as FakeNode;
+    const clone = makeNode(source.type);
+    clone.name = source.name;
+    clone.width = source.width;
+    clone.height = source.height;
+    // Shallow-copy paints/effects so recolorIcon can mutate them per-instance.
+    if (Array.isArray(source.fills)) clone.fills = [...source.fills];
+    if (Array.isArray(source.strokes)) clone.strokes = [...source.strokes];
+    if (Array.isArray(source.effects)) clone.effects = [...source.effects];
+    for (const child of source.children) {
+      // Skip slot subtrees — see comment above.
+      if (child.type === "SLOT") continue;
+      clone.appendChild(cloneNode(child));
+    }
+    return clone;
+  }
+
   // Shared `createInstance` implementation assigned to every node (see
   // makeNode). Called as `component.createInstance()`, so `this` is the source
   // component. Returns a fresh, detached INSTANCE that copies the component's
-  // size/name. It deliberately does NOT back-reference the main component (a
-  // cross-tree pointer would bloat the VM object graph the strict-assertion
-  // QuickJS build inspects on teardown), and nothing under test reads it.
+  // size/name and clones its subtree so per-instance overrides (like recoloring
+  // a Button icon to the variant's label colour) are testable. It deliberately
+  // does NOT back-reference the main component (a cross-tree pointer would
+  // bloat the VM object graph the strict-assertion QuickJS build inspects on
+  // teardown), and nothing under test reads the back-reference directly.
   function makeInstance(this: FakeNode): FakeNode {
     const instance = makeNode("INSTANCE");
     instance.width = this.width;
     instance.height = this.height;
     instance.name = this.name;
+    for (const child of this.children) {
+      if (child.type === "SLOT") continue;
+      instance.appendChild(cloneNode(child));
+    }
+    // Ensure the instance has at least one paint-bearing vector when the
+    // source component has no children (e.g. minimal test stubs like
+    // `Icon=bold` with no geometry). This keeps `recolorIcon` testable even
+    // for those stubs.
+    if (instance.children.length === 0) {
+      const vector = makeNode("VECTOR");
+      vector.fills = [
+        { type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 1 },
+      ];
+      vector.strokes = [
+        { type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 1 },
+      ];
+      instance.appendChild(vector);
+    }
     return instance;
   }
 
@@ -441,8 +487,11 @@ export function createFigmaMock() {
     // children. The real API gives the wrapper frame its own (often white or
     // transparent-but-present) background fill and resolves `currentColor` to a
     // black paint on the shapes. We mirror both: a background fill on the
-    // wrapper (so consumers must clear it) plus a child vector carrying a fill
-    // and a stroke for the Design System icon section's recolor pass to rebind.
+    // wrapper (so consumers must clear it) plus child vectors carrying fills
+    // and strokes for the Design System icon section's recolor pass to rebind.
+    // The number of vectors matches the number of <path>/<line>/<rect>/<circle>
+    // elements so multi-path icons (e.g. "table" with 4 paths) are faithfully
+    // represented and the flatten test can verify the single-vector collapse.
     createNodeFromSvg: (_svg: string) => {
       const frame = makeNode("FRAME");
       frame.width = 24;
@@ -450,15 +499,52 @@ export function createFigmaMock() {
       frame.fills = [
         { type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 1 },
       ];
-      const vector = makeNode("VECTOR");
-      vector.fills = [
-        { type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 1 },
-      ];
-      vector.strokes = [
-        { type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 1 },
-      ];
-      frame.appendChild(vector);
+      // Count SVG shape elements to decide how many vectors to emit. The
+      // bundled icons are all <path> (lucide) or a mix of <path>/<rect>/...;
+      // counting "<" gives a reasonable proxy for the real API's vector count.
+      const pathCount = (_svg.match(/<(path|line|rect|circle|ellipse|polygon|polyline)/g) || []).length;
+      const vectorCount = Math.max(1, pathCount || 1);
+      for (let i = 0; i < vectorCount; i++) {
+        const vector = makeNode("VECTOR");
+        vector.name = "Vector";
+        vector.fills = [
+          { type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 1 },
+        ];
+        vector.strokes = [
+          { type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 1 },
+        ];
+        frame.appendChild(vector);
+      }
       return frame;
+    },
+
+    // Flatten the given nodes into a single vector (like figma.flatten). Used
+    // by the icon builder to collapse multi-path icons into one vector so
+    // instance-swap colour overrides are 1:1.
+    flatten: (nodes: FakeNode[], parent: FakeNode) => {
+      if (nodes.length === 0) {
+        const v = makeNode("VECTOR");
+        v.name = "Vector";
+        if (parent && typeof parent.appendChild === "function") parent.appendChild(v);
+        return v;
+      }
+      // Use the first node's paints as the representative paint for the
+      // flattened result (the recolor pass will rebind it anyway).
+      const first = nodes[0]!;
+      const flat = makeNode("VECTOR");
+      flat.name = "Vector";
+      flat.width = 24;
+      flat.height = 24;
+      if (Array.isArray(first.fills)) flat.fills = [...first.fills];
+      if (Array.isArray(first.strokes)) flat.strokes = [...first.strokes];
+      // Remove the original nodes from their parent and insert the flat.
+      for (const n of nodes) {
+        const idx = parent.children.indexOf(n);
+        if (idx >= 0) parent.children.splice(idx, 1);
+        n.parent = null;
+      }
+      parent.appendChild(flat);
+      return flat;
     },
 
     createPaintStyle: (): FakePaintStyle => {

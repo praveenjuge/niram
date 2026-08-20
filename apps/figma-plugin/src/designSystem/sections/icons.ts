@@ -51,6 +51,28 @@ function buildIconComponent(
 
   const node = figma.createNodeFromSvg(svg);
   node.name = "icon";
+  // Collapse the SVG's multiple vectors into one so instance-swap colour
+  // overrides are 1:1 across icons with different path counts. Without this,
+  // a button tinted to primary-foreground (2 vectors for "plus") swapped to
+  // "table" (5 vectors) would keep the override on only the first 2 vectors
+  // and leave the remaining 3 at foreground — the half-white / half-black
+  // seen in the report.
+  const maybeFlatten = (figma as unknown as { flatten?: unknown }).flatten;
+  if (typeof maybeFlatten === "function") {
+    try {
+      const frame = node as unknown as FrameNode & ChildrenMixin;
+      const children = [...frame.children] as SceneNode[];
+      if (children.length > 1) {
+        (maybeFlatten as (nodes: SceneNode[], parent: BaseNode) => SceneNode)(
+          children,
+          frame,
+        );
+      }
+    } catch {
+      // Host without flatten or flatten failed — keep the original multi-vector
+      // frame. The button recolour will still tint the first N vectors.
+    }
+  }
   recolorIcon(node, foreground);
   node.x = 0;
   node.y = 0;
