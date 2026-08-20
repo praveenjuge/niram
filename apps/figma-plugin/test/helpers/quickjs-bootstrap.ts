@@ -48,3 +48,42 @@ g.__niramDrive = async function drive(presetCode: string): Promise<string> {
 
   return JSON.stringify({ posted, summary });
 };
+
+g.__niramDriveReplacement = async function driveReplacement(
+  presetCode: string,
+  scope: Record<string, boolean>,
+): Promise<string> {
+  const handler = (figma.ui as { onmessage: Handler | null }).onmessage;
+  if (typeof handler !== "function") {
+    throw new Error("dist/code.js did not register figma.ui.onmessage");
+  }
+
+  await handler({ type: "generate", presetCode });
+  const page = figma.root.children.find(
+    (child) => child.type === "PAGE" && child.name === "Niram",
+  );
+  if (!page) throw new Error("first generate did not create Niram");
+  const regionIds = () => {
+    const ids: Record<string, string[]> = {};
+    for (const child of page.children) {
+      const region = child.getPluginData("niramRegion");
+      if (region) (ids[region] ?? (ids[region] = [])).push(child.id);
+    }
+    return ids;
+  };
+  const before = regionIds();
+  (figma.ui.postMessage as unknown as SpyLike).mock.calls.length = 0;
+
+  await handler({ type: "generate", presetCode });
+  await handler({
+    type: "generate",
+    presetCode,
+    confirmReplace: true,
+    replacementScope: scope,
+  });
+
+  const posted = (figma.ui.postMessage as unknown as SpyLike).mock.calls.map(
+    (call) => call[0],
+  );
+  return JSON.stringify({ posted, before, after: regionIds() });
+};

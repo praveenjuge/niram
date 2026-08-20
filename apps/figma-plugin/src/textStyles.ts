@@ -89,6 +89,30 @@ export function textStyleName(sizeName: string, weightName: string): string {
   return `text-${sizeName}/${weightName}`;
 }
 
+// Read the existing Tailwind text styles without changing their metrics or
+// bindings. Used by selective replacement when Theme & tokens is unchecked.
+export async function readTextStyles(): Promise<TextStyleMap> {
+  const existing = await figma.getLocalTextStylesAsync();
+  const ids = new Map<string, string>();
+  const families = new Set<string>();
+  for (const style of existing) {
+    ids.set(style.name, style.id);
+    families.add(style.fontName.family);
+  }
+
+  return {
+    idFor: (name: string) => ids.get(name),
+    idForMetrics: (fontSize: number, weight: number) => {
+      const size = SIZE_BY_VALUE.get(fontSize);
+      const w = WEIGHT_BY_VALUE.get(weight);
+      if (!size || !w) return undefined;
+      return ids.get(textStyleName(size.name, w.name));
+    },
+    appliesToFamily: (family: string) => families.has(family),
+    count: ids.size,
+  };
+}
+
 // Ensure every (size, weight) text style exists, carries the Tailwind metrics,
 // and binds to the matching variables. Returns a name → id lookup. Call once
 // per generation run (styles are document-level and reused across pages).

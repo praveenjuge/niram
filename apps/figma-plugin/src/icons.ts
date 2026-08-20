@@ -88,6 +88,29 @@ export type SemanticIconName = keyof typeof SEMANTIC_ICONS;
 // sync with the icon set — instead of a one-off baked vector.
 export type IconComponentMap = Map<string, ComponentNode>;
 
+// Identify the library behind an existing icon component set. This lets files
+// generated before Niram stored page metadata participate in selective
+// replacement without guessing from the newly entered preset.
+export function detectIconLibrary(
+  components: IconComponentMap,
+): IconLibraryName | undefined {
+  let best: IconLibraryName | undefined;
+  let bestMatches = 0;
+  const libraries = Object.keys(ICON_LIBRARIES) as IconLibraryName[];
+  for (const library of libraries) {
+    const icons = ICON_LIBRARIES[library].icons;
+    let matches = 0;
+    for (const name of components.keys()) {
+      if (icons[name] !== undefined) matches += 1;
+    }
+    if (matches > bestMatches) {
+      best = library;
+      bestMatches = matches;
+    }
+  }
+  return best;
+}
+
 // The native size of the bundled markup; createNodeFromSvg yields a 24×24 frame.
 const NATIVE_ICON_SIZE = 24;
 

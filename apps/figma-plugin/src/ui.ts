@@ -5,6 +5,13 @@ import { extractPresetCode } from "./preset";
 import { generateRandomResolvablePreset } from "./registry";
 import { POPULAR_PRESETS } from "./popularPresets";
 import type { PluginToUi, UiToPlugin } from "./messages";
+import {
+  completeReplacementScope,
+  FULL_REPLACEMENT_SCOPE,
+  sameReplacementScope,
+  type ReplacementAvailability,
+  type ReplacementScope,
+} from "./replacement";
 
 const input = document.getElementById("preset") as HTMLInputElement;
 const generateButton = document.getElementById("generate") as HTMLButtonElement;
@@ -22,6 +29,15 @@ const confirmCancelButton = document.getElementById(
 ) as HTMLButtonElement;
 const status = document.getElementById("status") as HTMLParagraphElement;
 const presetsList = document.getElementById("presets-list") as HTMLDivElement;
+const replaceOptions = document.getElementById(
+  "replace-options",
+) as HTMLFieldSetElement;
+const replaceNote = document.getElementById(
+  "replace-note",
+) as HTMLParagraphElement;
+const scopeInputs = Array.from(
+  replaceOptions.querySelectorAll<HTMLInputElement>("input[data-scope]"),
+);
 
 // Created in renderPopularPresets, kept for direct shuffle triggering.
 let shuffleButton: HTMLButtonElement;
@@ -30,6 +46,7 @@ let busy = false;
 // The preset code awaiting a "replace everything" confirmation. Set when the
 // sandbox reports Niram already exists; cleared once the user confirms/cancels.
 let pendingPresetCode: string | null = null;
+let pendingAvailability: ReplacementAvailability = FULL_REPLACEMENT_SCOPE;
 
 function postToPlugin(message: UiToPlugin) {
   parent.postMessage({ pluginMessage: message }, "*");
@@ -115,21 +132,76 @@ function setPresetButtonsDisabled(disabled: boolean) {
   });
 }
 
-function runPreset(presetCode: string, confirmReplace = false) {
+function runPreset(
+  presetCode: string,
+  confirmReplace = false,
+  replacementScope?: ReplacementScope,
+) {
   busy = true;
   // Remember the code in case the sandbox comes back asking to confirm a
   // destructive replace; the confirm button resends exactly this code.
   pendingPresetCode = presetCode;
   syncGenerateButton();
   startProgress();
-  postToPlugin({ type: "generate", presetCode, confirmReplace });
+  postToPlugin({
+    type: "generate",
+    presetCode,
+    confirmReplace,
+    replacementScope,
+  });
 }
 
 // Swap the Generate button for the inline Cancel / Replace prompt (or back).
 function setConfirmVisible(visible: boolean) {
   generateButton.hidden = visible;
+  replaceOptions.hidden = !visible;
   confirmCancelButton.hidden = !visible;
   confirmReplaceButton.hidden = !visible;
+}
+
+function readScope(): ReplacementScope {
+  const scope = { ...FULL_REPLACEMENT_SCOPE };
+  for (const input of scopeInputs) {
+    const key = input.dataset.scope as keyof ReplacementScope;
+    scope[key] = input.checked;
+  }
+  return scope;
+}
+
+function writeScope(scope: ReplacementScope) {
+  for (const input of scopeInputs) {
+    const key = input.dataset.scope as keyof ReplacementScope;
+    input.checked = scope[key];
+  }
+}
+
+function syncReplacementScope(changed?: keyof ReplacementScope) {
+  const requested = readScope();
+  // Let users deselect a dependency chain naturally: turning off a downstream
+  // target also turns off any selected upstream target that would force it on.
+  if (changed === "blocks" && !requested.blocks) {
+    requested.components = false;
+    requested.designSystem = false;
+  } else if (changed === "components" && !requested.components) {
+    requested.designSystem = false;
+  }
+  const completed = completeReplacementScope(requested, pendingAvailability);
+  writeScope(completed);
+  replaceNote.textContent = sameReplacementScope(requested, completed)
+    ? ""
+    : "Required dependencies were selected automatically.";
+  confirmReplaceButton.disabled = !(
+    completed.theme ||
+    completed.designSystem ||
+    completed.components ||
+    completed.blocks
+  );
+}
+
+for (const input of scopeInputs) {
+  input.addEventListener("change", () => {
+    syncReplacementScope(input.dataset.scope as keyof ReplacementScope);
+  });
 }
 
 function renderPopularPresets() {
@@ -186,7 +258,7 @@ confirmReplaceButton.addEventListener("click", () => {
   const presetCode = pendingPresetCode;
   pendingPresetCode = null;
   setConfirmVisible(false);
-  runPreset(presetCode, true);
+  runPreset(presetCode, true, readScope());
 });
 
 confirmCancelButton.addEventListener("click", () => {
@@ -230,6 +302,9 @@ window.addEventListener("message", (event: MessageEvent) => {
     // the prompt is up; `pendingPresetCode` already holds the code the confirm
     // button will resend.
     setStatus(message.message);
+    pendingAvailability = message.availability;
+    writeScope(FULL_REPLACEMENT_SCOPE);
+    syncReplacementScope();
     resetProgress();
     setConfirmVisible(true);
     return;

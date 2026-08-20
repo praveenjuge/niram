@@ -57,6 +57,11 @@ export type DriveResult = {
   posted: PostedMessage[];
   summary: { collections: { name: string; variableCount: number }[] };
 };
+export type ReplacementDriveResult = {
+  posted: PostedMessage[];
+  before: Record<string, string[]>;
+  after: Record<string, string[]>;
+};
 
 async function bundle(entry: string, supported?: Record<string, boolean>) {
   const options = supported
@@ -113,6 +118,21 @@ function drainJobs(
 export async function runSandboxInQuickJS(
   presetCode: string,
 ): Promise<DriveResult> {
+  return runDrive<DriveResult>(
+    `__niramDrive(${JSON.stringify(presetCode)})`,
+  );
+}
+
+export async function runReplacementInQuickJS(
+  presetCode: string,
+  scope: Record<string, boolean>,
+): Promise<ReplacementDriveResult> {
+  return runDrive<ReplacementDriveResult>(
+    `__niramDriveReplacement(${JSON.stringify(presetCode)}, ${JSON.stringify(scope)})`,
+  );
+}
+
+async function runDrive<T>(expression: string): Promise<T> {
   const { sandbox, bootstrap } = await buildBundles();
   const QuickJS = await getHighMemoryQuickJS();
   const runtime = QuickJS.newRuntime();
@@ -140,7 +160,7 @@ export async function runSandboxInQuickJS(
 
     // 3. Kick off the async drive. Returns a VM promise handle.
     const driveCall = context.evalCode(
-      `__niramDrive(${JSON.stringify(presetCode)})`,
+      expression,
     );
     if (driveCall.error) {
       throw new Error(
@@ -162,7 +182,7 @@ export async function runSandboxInQuickJS(
     }
 
     const json = settled.value.consume((h) => context.getString(h));
-    return JSON.parse(json) as DriveResult;
+    return JSON.parse(json) as T;
   } finally {
     context.dispose();
     runtime.dispose();

@@ -30,6 +30,7 @@ export type {
 export type { EffectStyleMap } from "../effectStyles";
 export type { TextStyleMap } from "../textStyles";
 export { withShadcnRadius } from "./radius";
+export { loadExistingGeneratedAssets } from "./existing";
 
 export async function generateFromRegistry(
   data: ResolvedRegistry,

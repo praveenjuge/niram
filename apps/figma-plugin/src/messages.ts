@@ -1,6 +1,10 @@
 // Message contract between the Figma plugin sandbox (code.ts) and UI (ui.ts).
 
 import type { ProgressPhase, ProgressRegion } from "./progress";
+import type {
+  ReplacementAvailability,
+  ReplacementScope,
+} from "./replacement";
 
 export type UiToPlugin = {
   type: "generate";
@@ -8,6 +12,7 @@ export type UiToPlugin = {
   // Set when the user has confirmed Niram's inline "replace everything" prompt,
   // so the sandbox skips the existence check and regenerates in place.
   confirmReplace?: boolean;
+  replacementScope?: ReplacementScope;
 };
 
 export type PluginToUi =
@@ -16,7 +21,11 @@ export type PluginToUi =
   // confirmation (in place of the Generate button) before doing a destructive
   // regenerate; the UI resends `generate` with `confirmReplace` if the user
   // agrees.
-  | { type: "awaiting-confirmation"; message: string }
+  | {
+      type: "awaiting-confirmation";
+      message: string;
+      availability: ReplacementAvailability;
+    }
   | {
       type: "progress";
       // Human-readable detail line for the current phase. Kept as `message`

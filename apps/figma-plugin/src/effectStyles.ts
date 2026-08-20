@@ -34,6 +34,19 @@ export type EffectStyleMap = {
   readonly count: number;
 };
 
+// Read the styles Niram previously published without creating or refreshing
+// anything. Selective region replacement uses this path when Theme & tokens is
+// left unchecked, so an otherwise unrelated style is never mutated.
+export async function readEffectStyles(): Promise<EffectStyleMap> {
+  const existing = await figma.getLocalEffectStylesAsync();
+  const ids = new Map<string, string>();
+  for (const style of existing) ids.set(style.name, style.id);
+  return {
+    idFor: (name: string) => ids.get(name),
+    count: ids.size,
+  };
+}
+
 // Build a blur effect carrying its radius, optionally bound to the matching
 // primitive variable so the variable drives the style.
 function blurEffect(

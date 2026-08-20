@@ -10,7 +10,10 @@
 // than the unit tests; they live in their own folder and get a longer timeout.
 
 import { describe, expect, it } from "vitest";
-import { runSandboxInQuickJS } from "../helpers/quickjs-runner";
+import {
+  runReplacementInQuickJS,
+  runSandboxInQuickJS,
+} from "../helpers/quickjs-runner";
 
 describe("sandbox under QuickJS", () => {
   it("loads dist code and drives a full generate to a done message", async () => {
@@ -67,5 +70,31 @@ describe("sandbox under QuickJS", () => {
     expect(typeof error!.message).toBe("string");
     // A rejected preset must not also emit a done.
     expect(posted.find((m) => m.type === "done")).toBeUndefined();
+  }, 30_000);
+
+  it("replaces only Blocks while preserving upstream region nodes", async () => {
+    const result = await runReplacementInQuickJS("b2fA", {
+      theme: false,
+      designSystem: false,
+      components: false,
+      blocks: true,
+    });
+
+    expect(result.posted[0]).toMatchObject({
+      type: "awaiting-confirmation",
+      availability: {
+        theme: true,
+        designSystem: true,
+        components: true,
+        blocks: true,
+      },
+    });
+    expect(result.posted.find((m) => m.type === "error")).toBeUndefined();
+    expect(result.posted.filter((m) => m.type === "done")).toHaveLength(1);
+    expect(result.after["design-system"]).toEqual(
+      result.before["design-system"],
+    );
+    expect(result.after.components).toEqual(result.before.components);
+    expect(result.after.blocks).not.toEqual(result.before.blocks);
   }, 30_000);
 });

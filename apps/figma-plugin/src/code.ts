@@ -4,11 +4,26 @@
 import { buildComponentsPage } from "./componentsPage";
 import { buildBlocksRegion } from "./blocksPage";
 import { buildDesignSystem } from "./designSystem";
-import { generateFromRegistry, withShadcnRadius } from "./generator";
+import {
+  generateFromRegistry,
+  loadExistingGeneratedAssets,
+  withShadcnRadius,
+} from "./generator";
+import {
+  collectIconComponents,
+  detectIconLibrary,
+  type IconComponentMap,
+} from "./icons";
 import { decodePreset } from "./preset";
 import { resolvePreset } from "./registry";
 import { ProgressReporter } from "./progress";
 import type { PluginToUi, UiToPlugin } from "./messages";
+import {
+  FULL_REPLACEMENT_SCOPE,
+  replacementScopeError,
+  type ReplacementAvailability,
+  type ReplacementScope,
+} from "./replacement";
 
 figma.showUI(__html__, { width: 360, height: 360, themeColors: true });
 
@@ -22,7 +37,11 @@ figma.ui.onmessage = async (message: UiToPlugin) => {
   if (!message || typeof message !== "object") return;
 
   if (message.type === "generate") {
-    await handleGenerate(message.presetCode, message.confirmReplace === true);
+    await handleGenerate(
+      message.presetCode,
+      message.confirmReplace === true,
+      message.replacementScope,
+    );
   }
 };
 
@@ -37,13 +56,50 @@ function niramAlreadyExists(): boolean {
   );
 }
 
-async function handleGenerate(rawCode: string, confirmReplace: boolean) {
+async function replacementAvailability(): Promise<ReplacementAvailability> {
+  await figma.loadAllPagesAsync();
+  const page = figma.root.children.find(
+    (child) => child.type === "PAGE" && child.name === "Niram",
+  ) as PageNode | undefined;
+  const regions = new Set<string>();
+  let existingIcons: IconComponentMap = new Map();
+  if (page) {
+    for (const node of page.children) {
+      const region = node.getPluginData("niramRegion");
+      if (region) regions.add(region);
+    }
+    existingIcons = collectIconComponents(page as unknown as SceneNode);
+  }
+  const existing = await loadExistingGeneratedAssets("");
+  return {
+    theme: existing !== null,
+    designSystem:
+      regions.has("design-system") && existingIcons.size > 0,
+    components: regions.has("components"),
+    blocks: regions.has("blocks"),
+  };
+}
+
+async function handleGenerate(
+  rawCode: string,
+  confirmReplace: boolean,
+  requestedScope?: ReplacementScope,
+) {
   const presetCode = rawCode.trim();
 
   // The user already confirmed the destructive replace in the UI, or there's
   // nothing to replace yet (first run / Niram page deleted): generate now.
   if (confirmReplace || !niramAlreadyExists()) {
-    await runGenerate(presetCode);
+    const scope = niramAlreadyExists()
+      ? (requestedScope ?? FULL_REPLACEMENT_SCOPE)
+      : FULL_REPLACEMENT_SCOPE;
+    const availability = await replacementAvailability();
+    const scopeError = replacementScopeError(scope, availability);
+    if (scopeError) {
+      post({ type: "error", message: scopeError });
+      return;
+    }
+    await runGenerate(presetCode, scope);
     return;
   }
 
@@ -59,11 +115,12 @@ async function handleGenerate(rawCode: string, confirmReplace: boolean) {
   // resend `generate` with `confirmReplace` if the user agrees.
   post({
     type: "awaiting-confirmation",
-    message: "Niram already exists. Regenerating replaces everything.",
+    message: "Niram already exists. Choose what to replace.",
+    availability: await replacementAvailability(),
   });
 }
 
-async function runGenerate(presetCode: string) {
+async function runGenerate(presetCode: string, scope: ReplacementScope) {
   // One reporter per run: turns weighted phase updates into UI progress
   // messages with a determinate percent, elapsed time, and a detail line.
   const progress = new ProgressReporter({
@@ -104,10 +161,17 @@ async function runGenerate(presetCode: string) {
         }
       : undefined;
 
-    const result = await generateFromRegistry(resolved.data, {
-      presetCode: resolved.presetCode,
-      presetSummary,
-    });
+    const result = scope.theme
+      ? await generateFromRegistry(resolved.data, {
+          presetCode: resolved.presetCode,
+          presetSummary,
+        })
+      : await loadExistingGeneratedAssets(resolved.presetCode);
+    if (!result) {
+      throw new Error(
+        "Theme & tokens are missing. Select Theme & tokens and try again.",
+      );
+    }
 
     // Components and blocks bind their corners to the preset-driven shadcn
     // radius scale (which lives in `shadcn / Theme`), not the fixed Tailwind
@@ -119,32 +183,67 @@ async function runGenerate(presetCode: string) {
       result.variables.radiusScale,
     );
 
-    const ds = await buildDesignSystem({
-      presetCode: result.presetCode,
-      presetSummary,
-      tailwindColors: result.variables.tailwindColors,
-      primitives: result.variables.primitives,
-      theme: result.variables.theme,
-      fonts: result.fonts,
-      fontVars: result.variables.fonts,
-      effectStyles: result.effectStyles,
-      textStyles: result.textStyles,
-      onProgress: progress.region("design-system"),
-    });
+    await figma.loadAllPagesAsync();
+    let niramPage = figma.root.children.find(
+      (child) => child.type === "PAGE" && child.name === "Niram",
+    ) as PageNode | undefined;
+    const storedIconLibrary = niramPage
+      ? niramPage.getPluginData("niramIconLibrary")
+      : "";
+    const existingIconComponents = niramPage
+      ? collectIconComponents(niramPage as unknown as SceneNode)
+      : new Map();
+    const detectedIconLibrary = detectIconLibrary(existingIconComponents);
+    const activeIconLibrary = scope.designSystem
+      ? presetSummary?.iconLibrary
+      : storedIconLibrary || detectedIconLibrary || presetSummary?.iconLibrary;
+    const builderPresetSummary = {
+      ...presetSummary,
+      iconLibrary: activeIconLibrary,
+    };
 
-    const components = await buildComponentsPage({
-      presetCode: result.presetCode,
-      presetSummary,
-      tailwindColors: result.variables.tailwindColors,
-      primitives: componentPrimitives,
-      theme: result.variables.theme,
-      fonts: result.fonts,
-      fontVars: result.variables.fonts,
-      effectStyles: result.effectStyles,
-      textStyles: result.textStyles,
-      iconComponents: ds.iconComponents,
-      onProgress: progress.region("components"),
-    });
+    let designSystemNodes = 0;
+    let iconComponents: IconComponentMap = new Map();
+    if (scope.designSystem) {
+      const ds = await buildDesignSystem({
+        presetCode: result.presetCode,
+        presetSummary: builderPresetSummary,
+        tailwindColors: result.variables.tailwindColors,
+        primitives: result.variables.primitives,
+        theme: result.variables.theme,
+        fonts: result.fonts,
+        fontVars: result.variables.fonts,
+        effectStyles: result.effectStyles,
+        textStyles: result.textStyles,
+        onProgress: progress.region("design-system"),
+      });
+      designSystemNodes = ds.nodeCount;
+      iconComponents = ds.iconComponents;
+      niramPage = figma.root.children.find(
+        (child) => child.type === "PAGE" && child.name === "Niram",
+      ) as PageNode | undefined;
+      if (niramPage) {
+        niramPage.setPluginData("niramIconLibrary", activeIconLibrary || "lucide");
+      }
+    } else if (niramPage) {
+      iconComponents = existingIconComponents;
+    }
+
+    const components = scope.components
+      ? await buildComponentsPage({
+          presetCode: result.presetCode,
+          presetSummary: builderPresetSummary,
+          tailwindColors: result.variables.tailwindColors,
+          primitives: componentPrimitives,
+          theme: result.variables.theme,
+          fonts: result.fonts,
+          fontVars: result.variables.fonts,
+          effectStyles: result.effectStyles,
+          textStyles: result.textStyles,
+          iconComponents,
+          onProgress: progress.region("components"),
+        })
+      : { nodeCount: 0 };
 
     // Everything Niram generates lives on one page (Figma's Starter tier caps
     // a file at 3 pages). The Design System sections render at the top, the
@@ -156,10 +255,10 @@ async function runGenerate(presetCode: string) {
       (child) => child.type === "PAGE" && child.name === "Niram",
     ) as PageNode | undefined;
 
-    const blocks = componentsPage
+    const blocks = scope.blocks && componentsPage
       ? await buildBlocksRegion({
           presetCode: result.presetCode,
-          presetSummary,
+          presetSummary: builderPresetSummary,
           tailwindColors: result.variables.tailwindColors,
           primitives: componentPrimitives,
           theme: result.variables.theme,
@@ -167,7 +266,7 @@ async function runGenerate(presetCode: string) {
           fontVars: result.variables.fonts,
           effectStyles: result.effectStyles,
           textStyles: result.textStyles,
-          iconComponents: ds.iconComponents,
+          iconComponents,
           targetPage: componentsPage,
           onProgress: progress.region("blocks"),
         })
@@ -186,7 +285,7 @@ async function runGenerate(presetCode: string) {
       summary: {
         collections: result.collections,
         fallbackThemeColors: result.fallbackThemeColors,
-        designSystemNodes: ds.nodeCount,
+        designSystemNodes,
         componentsNodes: components.nodeCount,
         blocksNodes: blocks.nodeCount,
       },
@@ -198,9 +297,12 @@ async function runGenerate(presetCode: string) {
       (acc, collection) => acc + collection.variableCount,
       0,
     );
-    figma.notify(
-      `Niram: ${variableTotal} variables · Design System (${ds.nodeCount} nodes) · Components (${components.nodeCount} nodes) · Blocks (${blocks.nodeCount} nodes).`,
-    );
+    const replaced: string[] = [];
+    if (scope.theme) replaced.push(`${variableTotal} variables`);
+    if (scope.designSystem) replaced.push(`Design System (${designSystemNodes} nodes)`);
+    if (scope.components) replaced.push(`Components (${components.nodeCount} nodes)`);
+    if (scope.blocks) replaced.push(`Blocks (${blocks.nodeCount} nodes)`);
+    figma.notify(`Niram: replaced ${replaced.join(" · ")}.`);
   } catch (error) {
     const messageText =
       error instanceof Error ? error.message : "Unknown error.";
