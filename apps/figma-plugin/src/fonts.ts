@@ -115,15 +115,14 @@ export type LoadFontsOptions = {
 // "family\u0000style" pairs that actually loaded on this host. Loads are
 // best-effort: a missing family/weight is simply absent from the result.
 //
-// Each family is loaded by its *actual* installed style names (via
-// `listAvailableFontsAsync`), not a fixed list of guessed weight names. This
-// matters because a font's style names vary — Geist exposes "SemiBold" where
-// our reference list says "Semi Bold" — and a later `setValueForMode` on a
-// bound font variable re-validates *every* face the existing text nodes use
-// (including faces Figma substituted for a glyph the requested weight lacked).
-// If such a face was never loaded, that call throws "unloaded font". Loading a
-// family's real styles guarantees they're all present. Falls back to the fixed
-// weight list when the host can't enumerate fonts (older hosts / the test mock).
+// Each family loads both its *actual* installed style names (via
+// `listAvailableFontsAsync`) and the standard weight names Niram assigns to
+// text. A font's real style names vary — Geist exposes "SemiBold" where our
+// standard list says "Semi Bold" — but Figma's enumeration can also omit a
+// face already used by an existing variable-bound node. Loading the union means
+// exact faces such as Playfair Display Medium are attempted and awaited before
+// a later `setValueForMode` re-validates the old document. Missing guesses are
+// best-effort and reject harmlessly.
 export async function loadFontFamilies(
   families: string[],
 ): Promise<Set<string>> {
@@ -139,8 +138,10 @@ export async function loadFontFamilies(
   const attempts: Promise<void>[] = [];
   for (const family of unique) {
     const actual = stylesByFamily.get(family);
-    const styleList: ReadonlyArray<string> =
-      actual && actual.length > 0 ? actual : FONT_STYLES;
+    const styleList: string[] = actual ? [...actual] : [];
+    for (const style of FONT_STYLES) {
+      if (styleList.indexOf(style) === -1) styleList.push(style);
+    }
     for (const style of styleList) {
       attempts.push(
         figma.loadFontAsync({ family, style }).then(

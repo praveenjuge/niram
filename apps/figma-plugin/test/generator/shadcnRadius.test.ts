@@ -96,7 +96,7 @@ describe("shadcn radius scale (component binding)", () => {
 
     const shadcnMd = generated.variables.radiusScale.get("md") as AnyVar;
     expect(boundId).toBe(shadcnMd.id);
-    // 6 (md) * 1.4 (0.875rem / 0.625rem) = 8.4.
-    expect(soleValue(shadcnMd)).toBeCloseTo(8.4);
+    // shadcn radius/md is 0.8 × the 14px large preset base.
+    expect(soleValue(shadcnMd)).toBeCloseTo(11.2);
   });
 });

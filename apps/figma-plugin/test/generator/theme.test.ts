@@ -114,12 +114,16 @@ describe("ensureThemeCollection", () => {
 
   it("derives the shadcn radius scale from the preset --radius", async () => {
     const tw = await ensureTailwindColorCollection();
-    // config.radius is undefined here → default scale (matches Tailwind values).
+    // The default --radius is 10px. shadcn derives sm…4xl directly from it
+    // with 0.6, 0.8, 1, 1.4, 1.8, 2.2, and 2.6 multipliers.
     const result = await ensureThemeCollection(makeRegistry(), tw);
-    expect(soleValue(result.radiusScale.get("sm"))).toBe(4);
-    expect(soleValue(result.radiusScale.get("md"))).toBe(6);
-    expect(soleValue(result.radiusScale.get("lg"))).toBe(8);
-    expect(soleValue(result.radiusScale.get("xl"))).toBe(12);
+    expect(soleValue(result.radiusScale.get("sm"))).toBe(6);
+    expect(soleValue(result.radiusScale.get("md"))).toBe(8);
+    expect(soleValue(result.radiusScale.get("lg"))).toBe(10);
+    expect(soleValue(result.radiusScale.get("xl"))).toBe(14);
+    expect(soleValue(result.radiusScale.get("2xl"))).toBe(18);
+    expect(soleValue(result.radiusScale.get("3xl"))).toBe(22);
+    expect(soleValue(result.radiusScale.get("4xl"))).toBe(26);
     // none / xs / full are structural and never part of this derived scale.
     expect(result.radiusScale.has("none")).toBe(false);
     expect(result.radiusScale.has("full")).toBe(false);
@@ -128,7 +132,7 @@ describe("ensureThemeCollection", () => {
   it("collapses the shadcn radius scale to 0 for radius=none", async () => {
     const tw = await ensureTailwindColorCollection();
     const registry = makeRegistry();
-    registry.config = { radius: "none" } as ResolvedRegistry["config"];
+    registry.cssVars.light.radius = "0";
     const result = await ensureThemeCollection(registry, tw);
     expect(soleValue(result.radiusScale.get("sm"))).toBe(0);
     expect(soleValue(result.radiusScale.get("lg"))).toBe(0);
@@ -137,11 +141,10 @@ describe("ensureThemeCollection", () => {
   it("scales the shadcn radius scale up for radius=large", async () => {
     const tw = await ensureTailwindColorCollection();
     const registry = makeRegistry();
-    registry.config = { radius: "large" } as ResolvedRegistry["config"];
+    registry.cssVars.light.radius = "0.875rem";
     const result = await ensureThemeCollection(registry, tw);
-    // 0.875rem / 0.625rem default = 1.4x.
-    expect(soleValue(result.radiusScale.get("lg"))).toBeCloseTo(11.2); // 8 * 1.4
-    expect(soleValue(result.radiusScale.get("md"))).toBeCloseTo(8.4); // 6 * 1.4
+    expect(soleValue(result.radiusScale.get("lg"))).toBeCloseTo(14);
+    expect(soleValue(result.radiusScale.get("md"))).toBeCloseTo(11.2);
   });
 
   it("emits body + heading font variables, defaulting to Inter", async () => {
@@ -198,5 +201,53 @@ describe("ensureThemeCollection", () => {
     ).mock.calls.map((c) => c[0].family);
     expect(loaded).toContain("Figtree");
     expect(loaded).toContain("Lora");
+  });
+
+  it("loads Playfair Display Medium before rewriting an existing font variable", async () => {
+    const tw = await ensureTailwindColorCollection();
+    const firstRegistry = makeRegistry();
+    firstRegistry.config = {
+      font: "playfair-display",
+      fontHeading: "inherit",
+    } as ResolvedRegistry["config"];
+    const first = await ensureThemeCollection(firstRegistry, tw);
+
+    const bodyVar = first.fontVars.body as unknown as {
+      setValueForMode(modeId: string, value: unknown): void;
+    };
+    const originalSetValue = bodyVar.setValueForMode.bind(bodyVar);
+    let mediumLoaded = false;
+    const originalLoadFont = figma.loadFontAsync;
+    (figma as unknown as { loadFontAsync: unknown }).loadFontAsync = (font: {
+      family: string;
+      style: string;
+    }) => {
+      if (font.family === "Playfair Display" && font.style === "Medium") {
+        mediumLoaded = true;
+      }
+      return Promise.resolve();
+    };
+    bodyVar.setValueForMode = (modeId, value) => {
+      if (!mediumLoaded) {
+        throw new Error('unloaded font "Playfair Display Medium"');
+      }
+      originalSetValue(modeId, value);
+    };
+
+    const secondRegistry = makeRegistry();
+    secondRegistry.config = {
+      font: "inter",
+      fontHeading: "inherit",
+    } as ResolvedRegistry["config"];
+    try {
+      await expect(
+        ensureThemeCollection(secondRegistry, tw),
+      ).resolves.toBeDefined();
+      expect(mediumLoaded).toBe(true);
+    } finally {
+      (figma as unknown as { loadFontAsync: unknown }).loadFontAsync =
+        originalLoadFont;
+      bodyVar.setValueForMode = originalSetValue;
+    }
   });
 });

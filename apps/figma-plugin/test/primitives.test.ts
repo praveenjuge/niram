@@ -6,9 +6,8 @@ import {
   PRESET_FONT_FAMILY_MAP,
   presetFontFamily,
   RADIUS_TOKENS,
-  radiusScaleForSlug,
   resolveFonts,
-  scaleRadiusTokens,
+  shadcnRadiusScale,
   SPACING_TOKENS,
 } from "../src/primitives";
 
@@ -96,58 +95,33 @@ describe("resolveFonts", () => {
   });
 });
 
-describe("radiusScaleForSlug", () => {
-  it("returns 1 (no change) for the default/medium radius", () => {
-    expect(radiusScaleForSlug("default")).toBe(1);
-    expect(radiusScaleForSlug("medium")).toBe(1);
-  });
-
-  it("returns 1 for unknown or missing slugs", () => {
-    expect(radiusScaleForSlug(undefined)).toBe(1);
-    expect(radiusScaleForSlug("not-a-radius")).toBe(1);
-  });
-
-  it("scales below 1 for none/small and above 1 for large", () => {
-    // none → --radius 0, so every scaled token collapses to a sharp corner.
-    expect(radiusScaleForSlug("none")).toBe(0);
-    // small → 0.45rem (7.2px) / 0.625rem (10px) default.
-    expect(radiusScaleForSlug("small")).toBeCloseTo(0.72);
-    // large → 0.875rem (14px) / 10px default.
-    expect(radiusScaleForSlug("large")).toBeCloseTo(1.4);
-  });
-});
-
-describe("scaleRadiusTokens", () => {
-  function valueOf(tokens: typeof RADIUS_TOKENS, name: string) {
+describe("shadcnRadiusScale", () => {
+  function valueOf(tokens: ReturnType<typeof shadcnRadiusScale>, name: string) {
     return tokens.find((t) => t.name === name)?.value;
   }
 
-  it("returns the table unchanged at scale 1", () => {
-    expect(scaleRadiusTokens(RADIUS_TOKENS, 1)).toBe(RADIUS_TOKENS);
+  it("derives every semantic step directly from the shadcn base radius", () => {
+    const scaled = shadcnRadiusScale(10);
+    expect(scaled.map((token) => token.value)).toEqual([
+      6, 8, 10, 14, 18, 22, 26,
+    ]);
   });
 
-  it("scales the derived tokens (sm…4xl) by the ratio", () => {
-    const scaled = scaleRadiusTokens(RADIUS_TOKENS, 1.4);
-    expect(valueOf(scaled, "sm")).toBeCloseTo(5.6); // 4 * 1.4
-    expect(valueOf(scaled, "md")).toBeCloseTo(8.4); // 6 * 1.4
-    expect(valueOf(scaled, "lg")).toBeCloseTo(11.2); // 8 * 1.4
-    expect(valueOf(scaled, "xl")).toBeCloseTo(16.8); // 12 * 1.4
-    expect(valueOf(scaled, "4xl")).toBeCloseTo(44.8); // 32 * 1.4
+  it("applies the current shadcn multipliers to non-default bases", () => {
+    const small = shadcnRadiusScale(7.2);
+    expect(small.map((token) => token.value)).toEqual([
+      4.32, 5.76, 7.2, 10.08, 12.96, 15.84, 18.72,
+    ]);
+    const large = shadcnRadiusScale(14);
+    expect(large.map((token) => token.value)).toEqual([
+      8.4, 11.2, 14, 19.6, 25.2, 30.8, 36.4,
+    ]);
   });
 
-  it("leaves the structural tokens (none/xs/full) untouched", () => {
-    const scaled = scaleRadiusTokens(RADIUS_TOKENS, 0.72);
-    expect(valueOf(scaled, "none")).toBe(0);
-    expect(valueOf(scaled, "xs")).toBe(2);
-    expect(valueOf(scaled, "full")).toBe(9999);
-  });
-
-  it("collapses scaled tokens to 0 at scale 0 (radius=none)", () => {
-    const scaled = scaleRadiusTokens(RADIUS_TOKENS, 0);
+  it("collapses every semantic step at a zero base radius", () => {
+    const scaled = shadcnRadiusScale(0);
     expect(valueOf(scaled, "sm")).toBe(0);
     expect(valueOf(scaled, "lg")).toBe(0);
-    // Pill + sharp corners still pass through.
-    expect(valueOf(scaled, "full")).toBe(9999);
-    expect(valueOf(scaled, "xs")).toBe(2);
+    expect(scaled).toHaveLength(7);
   });
 });

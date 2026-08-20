@@ -49,7 +49,7 @@ describe("loadFontFamilies", () => {
     }
   });
 
-  it("loads a family's actual installed styles (e.g. Geist 'SemiBold')", async () => {
+  it("loads actual installed styles plus required standard weights", async () => {
     // A font's real style names can differ from the fixed weight list ("Semi
     // Bold" vs Geist's "SemiBold"). When the host can enumerate fonts, every
     // real face must load so a later setValueForMode re-validation never hits
@@ -70,10 +70,31 @@ describe("loadFontFamilies", () => {
       // have missed it, leaving the face unloaded).
       expect(loaded.has("Geist\u0000SemiBold")).toBe(true);
       expect(loaded.has("Geist\u0000Regular")).toBe(true);
-      // The fixed list's guessed weight name is not requested for Geist here.
-      expect(loaded.has("Geist\u0000Semi Bold")).toBe(false);
-      // Another family's faces are not attributed to Geist.
-      expect(loaded.has("Geist\u0000Bold")).toBe(false);
+      // Keep the standard styles too. Figma's enumeration can omit a face
+      // already used by a bound text node; setValueForMode then rejects the
+      // variable update unless that exact old face was loaded explicitly.
+      expect(loaded.has("Geist\u0000Semi Bold")).toBe(true);
+      expect(loaded.has("Geist\u0000Medium")).toBe(true);
+      expect(loaded.has("Geist\u0000Bold")).toBe(true);
+    } finally {
+      delete figmaAny.listAvailableFontsAsync;
+    }
+  });
+
+  it("loads Playfair Display Medium even when enumeration omits it", async () => {
+    const figmaAny = figma as unknown as {
+      listAvailableFontsAsync?: unknown;
+    };
+    figmaAny.listAvailableFontsAsync = () =>
+      Promise.resolve([
+        { fontName: { family: "Playfair Display", style: "Regular" } },
+      ]);
+    try {
+      await loadFontFamilies(["Playfair Display"]);
+      expect(loadCalls()).toContainEqual({
+        family: "Playfair Display",
+        style: "Medium",
+      });
     } finally {
       delete figmaAny.listAvailableFontsAsync;
     }

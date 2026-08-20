@@ -5,6 +5,7 @@
 import { findTailwindAlias, parseColor, type Rgba } from "../colors";
 import { FALLBACK_GLYPH_FAMILIES, loadFontFamilies } from "../fonts";
 import {
+  DEFAULT_RADIUS_PX,
   resolveFonts,
   shadcnRadiusScale,
   type ResolvedFonts,
@@ -189,7 +190,8 @@ export async function ensureThemeCollection(
   // radius choice shows up everywhere, while `Tailwind / Primitives` keeps a
   // stable reference scale. Names are `radius/<step>` (e.g. "radius/lg").
   const radiusScale = new Map<string, Variable>();
-  for (const token of shadcnRadiusScale(data.config.radius)) {
+  const baseRadiusPx = parseLengthRem(light["radius"]) ?? DEFAULT_RADIUS_PX;
+  for (const token of shadcnRadiusScale(baseRadiusPx)) {
     const variable = await getOrCreateVariable(
       collection,
       `radius/${token.name}`,
