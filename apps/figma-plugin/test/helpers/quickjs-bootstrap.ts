@@ -11,7 +11,11 @@ import { createFigmaMock } from "../figma-mock";
 
 type Handler = (message: unknown) => unknown;
 type SpyLike = { mock: { calls: unknown[][] } };
-type CollectionLike = { name: string; variableIds: string[] };
+type CollectionLike = {
+  name: string;
+  variableIds: string[];
+  modes: { modeId: string; name: string }[];
+};
 
 const g = globalThis as Record<string, unknown>;
 
@@ -30,13 +34,35 @@ g.setTimeout = function (fn: () => void): number {
   return 0;
 };
 
-g.__niramDrive = async function drive(presetCode: string): Promise<string> {
+// Coarse projection of the resulting variable store so the host can assert
+// structure without a second bridge round-trip.
+async function summarize(): Promise<string> {
+  const collections =
+    (await figma.variables.getLocalVariableCollectionsAsync()) as unknown as CollectionLike[];
+  const summary = {
+    collections: collections.map((coll) => ({
+      name: coll.name,
+      variableCount: coll.variableIds.length,
+      modes: coll.modes.map((mode) => mode.name),
+    })),
+  };
+  return JSON.stringify(summary);
+}
+
+g.__niramDrive = async function drive(
+  presetCode: string,
+  options?: { theming?: { strategy: string } },
+): Promise<string> {
   const handler = (figma.ui as { onmessage: Handler | null }).onmessage;
   if (typeof handler !== "function") {
     throw new Error("dist/code.js did not register figma.ui.onmessage");
   }
 
-  await handler({ type: "generate", presetCode });
+  await handler({
+    type: "generate",
+    presetCode,
+    theming: options?.theming,
+  });
 
   // Every plugin→UI message the run posted, in order. The harness asserts the
   // terminal `done` (or `error`) here.
@@ -44,18 +70,7 @@ g.__niramDrive = async function drive(presetCode: string): Promise<string> {
     (call) => call[0],
   );
 
-  // A coarse projection of the resulting variable store so the host can assert
-  // structure without a second bridge round-trip.
-  const collections =
-    (await figma.variables.getLocalVariableCollectionsAsync()) as unknown as CollectionLike[];
-  const summary = {
-    collections: collections.map((coll) => ({
-      name: coll.name,
-      variableCount: coll.variableIds.length,
-    })),
-  };
-
-  return JSON.stringify({ posted, summary });
+  return JSON.stringify({ posted, summary: JSON.parse(await summarize()) });
 };
 
 g.__niramDriveReplacement = async function driveReplacement(

@@ -43,4 +43,28 @@ describe("existing generated assets", () => {
   it("returns null before Niram collections exist", async () => {
     await expect(loadExistingGeneratedAssets("b2fA")).resolves.toBeNull();
   });
+
+  it("reconstructs a modes-strategy collection into shared light/dark maps", async () => {
+    liveFigma().__setModeLimit(4);
+    const resolved = resolvePreset("b2fA");
+    if (!resolved.ok) throw new Error(resolved.error);
+    await generateFromRegistry(resolved.data, {
+      presetCode: resolved.presetCode,
+      presetSummary: { font: "geist" },
+      theming: { strategy: "modes" },
+    });
+
+    const existing = await loadExistingGeneratedAssets("replacement-code");
+    expect(existing).not.toBeNull();
+    expect(existing!.themingStrategy).toBe("modes");
+
+    // One unprefixed variable per role populates BOTH maps.
+    const lightBg = existing!.variables.theme.light.get("background");
+    const darkBg = existing!.variables.theme.dark.get("background");
+    expect(darkBg).toBeDefined();
+    expect(darkBg!.id).toBe(lightBg!.id);
+
+    // Mode ids are surfaced so consumers can pin explicit modes.
+    expect(existing!.variables.theme.modeIds).toBeDefined();
+  });
 });

@@ -181,6 +181,41 @@
         margin: 4px 0 0;
         color: var(--muted);
       }
+      .theming-options {
+        margin: 0;
+        padding: 0;
+        border: 0;
+      }
+      .theming-options legend {
+        margin-bottom: 4px;
+        padding: 0;
+        color: var(--fg);
+        font-weight: 600;
+      }
+      .theming-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .theming-grid label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 20px;
+        cursor: pointer;
+      }
+      .theming-grid input {
+        margin: 0;
+        accent-color: var(--accent);
+      }
+      .theming-hint {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .theming-note {
+        margin: 4px 0 0;
+        color: var(--muted);
+      }
       .actions {
         display: flex;
         gap: 8px;
@@ -331,6 +366,29 @@
       </div>
 
       <div class="presets-list" id="presets-list"></div>
+
+      <fieldset id="theming-options" class="theming-options">
+        <legend>Theming</legend>
+        <div class="theming-grid">
+          <label>
+            <input
+              type="radio"
+              name="theming-strategy"
+              value="twins"
+              checked
+            />Twin variables
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="theming-strategy"
+              value="modes"
+            />Variable modes
+            <span id="modes-hint" class="theming-hint" hidden></span>
+          </label>
+        </div>
+        <p id="theming-note" class="theming-note" hidden></p>
+      </fieldset>
 
       <footer>
         <p id="status" class="status" hidden></p>

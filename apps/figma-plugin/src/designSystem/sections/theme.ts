@@ -1,8 +1,12 @@
 // Theme swatches grouped by purpose (Surfaces, Brand, States, …). Each swatch
 // is a split chip showing the light scheme on top and the dark scheme on the
 // bottom, so both schemes live in one section instead of two duplicated grids.
-// Each half binds its fill to the matching light/dark theme variable, so the
-// whole grid updates with the preset.
+//
+// Under the twin-variables strategy each half binds a different variable
+// ("background" vs "dark-background"). Under the variable-modes strategy both
+// halves bind the SAME variable; each half pins an explicit Light/Dark
+// variable mode via setExplicitVariableModeForCollection so the chip still
+// shows both schemes from one source of truth.
 
 import { bindFill, bindStrokeColor } from "../bindings";
 import { createDesignSystemContext } from "../context";
@@ -61,6 +65,13 @@ export async function addThemeSection(
   const light = inputs.theme.light;
   const dark = inputs.theme.dark;
   const ctx = createDesignSystemContext(inputs);
+
+  // Under the variable-modes strategy, resolve the theme collection once so
+  // each swatch half can pin an explicit Light/Dark mode.
+  const modeIds = inputs.theme.modeIds;
+  const themeCollection = modeIds
+    ? await resolveThemeCollection(light)
+    : null;
 
   const section = createSectionFrame(
     "Theme",
@@ -146,12 +157,24 @@ export async function addThemeSection(
       lightHalf.resize(SWATCH_WIDTH, SWATCH_HALF);
       lightHalf.layoutAlign = "STRETCH";
       bindFill(lightHalf, light.get(key));
+      if (modeIds && themeCollection) {
+        lightHalf.setExplicitVariableModeForCollection(
+          themeCollection,
+          modeIds.light,
+        );
+      }
       chip.appendChild(lightHalf);
 
       const darkHalf = figma.createRectangle();
       darkHalf.resize(SWATCH_WIDTH, SWATCH_HALF);
       darkHalf.layoutAlign = "STRETCH";
       bindFill(darkHalf, dark.get(key));
+      if (modeIds && themeCollection) {
+        darkHalf.setExplicitVariableModeForCollection(
+          themeCollection,
+          modeIds.dark,
+        );
+      }
       chip.appendChild(darkHalf);
 
       cell.appendChild(chip);
@@ -171,4 +194,17 @@ export async function addThemeSection(
 
   page.appendChild(section);
   return countDescendants(section);
+}
+
+// Resolves the `shadcn / Theme` collection object from any of its variables
+// (setExplicitVariableModeForCollection takes the collection, not an id).
+async function resolveThemeCollection(
+  variables: Map<string, Variable>,
+): Promise<VariableCollection | null> {
+  const anyVariable = variables.values().next();
+  if (!anyVariable || !anyVariable.value) return null;
+  const variable = anyVariable.value as Variable;
+  return figma.variables.getVariableCollectionByIdAsync(
+    variable.variableCollectionId,
+  );
 }

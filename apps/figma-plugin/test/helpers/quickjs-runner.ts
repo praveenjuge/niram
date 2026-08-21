@@ -55,7 +55,13 @@ function getHighMemoryQuickJS() {
 export type PostedMessage = { type: string; [key: string]: unknown };
 export type DriveResult = {
   posted: PostedMessage[];
-  summary: { collections: { name: string; variableCount: number }[] };
+  summary: {
+    collections: {
+      name: string;
+      variableCount: number;
+      modes?: string[];
+    }[];
+  };
 };
 export type ReplacementDriveResult = {
   posted: PostedMessage[];
@@ -115,11 +121,28 @@ function drainJobs(
   throw new Error("QuickJS job queue did not drain (possible infinite loop)");
 }
 
+export type DriveOptions = {
+  // Raise the mock's per-collection mode limit to simulate a paid tier.
+  // Applied as a prelude BEFORE the sandbox bundle evaluates, so boot-time
+  // work (like the multi-mode capability probe) sees the paid tier.
+  modeLimit?: number;
+  // Theming strategy forwarded on the generate message.
+  theming?: { strategy: "twins" | "modes" };
+};
+
 export async function runSandboxInQuickJS(
   presetCode: string,
+  options?: DriveOptions,
 ): Promise<DriveResult> {
+  const prelude =
+    typeof options?.modeLimit === "number"
+      ? `figma.__setModeLimit(${options.modeLimit});`
+      : undefined;
   return runDrive<DriveResult>(
-    `__niramDrive(${JSON.stringify(presetCode)})`,
+    `__niramDrive(${JSON.stringify(presetCode)}, ${JSON.stringify({
+      theming: options?.theming,
+    })})`,
+    prelude,
   );
 }
 
@@ -132,7 +155,10 @@ export async function runReplacementInQuickJS(
   );
 }
 
-async function runDrive<T>(expression: string): Promise<T> {
+async function runDrive<T>(
+  expression: string,
+  prelude?: string,
+): Promise<T> {
   const { sandbox, bootstrap } = await buildBundles();
   const QuickJS = await getHighMemoryQuickJS();
   const runtime = QuickJS.newRuntime();
@@ -147,6 +173,18 @@ async function runDrive<T>(expression: string): Promise<T> {
       );
     }
     boot.value.dispose();
+
+    // 1.5 Optional prelude (e.g. raise the mock's mode limit) — must run
+    // before the sandbox evaluates so boot-time probes see the override.
+    if (prelude) {
+      const pre = context.evalCode(prelude);
+      if (pre.error) {
+        throw new Error(
+          `prelude eval failed: ${pre.error.consume((h) => context.dump(h))}`,
+        );
+      }
+      pre.value.dispose();
+    }
 
     // 2. The real, downleveled sandbox. This is the assertion that matters:
     //    if code.js uses anything QuickJS can't run, this throws.

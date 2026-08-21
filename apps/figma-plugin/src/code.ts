@@ -7,6 +7,8 @@ import { buildDesignSystem } from "./designSystem";
 import {
   generateFromRegistry,
   loadExistingGeneratedAssets,
+  loadExistingThemeStrategy,
+  probeMultiModeSupport,
   withShadcnRadius,
 } from "./generator";
 import {
@@ -24,6 +26,7 @@ import {
   ProgressReporter,
   type ProgressCalibration,
 } from "./progress";
+import { describeThemingStrategy, normalizeThemingStrategy, type ThemingStrategy } from "./theming";
 import type { PluginToUi, UiToPlugin } from "./messages";
 import {
   FULL_REPLACEMENT_SCOPE,
@@ -35,6 +38,10 @@ import {
 // Root-level plugin data holding the previous run's per-phase durations so the
 // next run's progress bar tracks real time (see ProgressReporter calibration).
 const CALIBRATION_KEY = "niramProgressCalibration";
+
+// clientStorage key persisting the UI's theming-strategy selection across
+// sessions. clientStorage is per-user/per-machine, not per-document.
+const THEMING_STORAGE_KEY = "niramThemingStrategy";
 
 function readCalibration(): ProgressCalibration | undefined {
   try {
@@ -70,6 +77,33 @@ figma.showUI(__html__, { width: 360, height: 360, themeColors: true });
 // auto-shuffle when launched from the "Shuffle a random preset" command).
 post({ type: "ready", command: figma.command || undefined });
 
+// Probe multi-mode support + read the persisted strategy in the background and
+// report both to the UI. There is no plugin API exposing the file's plan, so
+// capability detection is a scratch-collection addMode try/catch; doing it
+// after `ready` keeps plugin open instant.
+void postThemingState();
+
+async function postThemingState() {
+  const stored = await readStoredThemingStrategy();
+  const modesAvailable = await probeMultiModeSupport();
+  post({
+    type: "theming-state",
+    strategy: stored ?? "twins",
+    modesAvailable,
+  });
+}
+
+async function readStoredThemingStrategy(): Promise<ThemingStrategy | null> {
+  try {
+    const raw = await figma.clientStorage.getAsync(THEMING_STORAGE_KEY);
+    return normalizeThemingStrategy(raw);
+  } catch {
+    // clientStorage can be unavailable (e.g. no persisted storage); treat as
+    // "no saved preference".
+    return null;
+  }
+}
+
 figma.ui.onmessage = async (message: UiToPlugin) => {
   if (!message || typeof message !== "object") return;
 
@@ -81,7 +115,19 @@ figma.ui.onmessage = async (message: UiToPlugin) => {
       message.presetCode,
       message.confirmReplace === true,
       message.replacementScope,
+      normalizeThemingStrategy(message.theming?.strategy),
     );
+    return;
+  }
+
+  if (message.type === "set-theming") {
+    const strategy = normalizeThemingStrategy(message.strategy);
+    if (!strategy) return;
+    try {
+      await figma.clientStorage.setAsync(THEMING_STORAGE_KEY, strategy);
+    } catch {
+      // Best-effort persistence; the run still uses the selected strategy.
+    }
   }
 };
 
@@ -124,22 +170,40 @@ async function handleGenerate(
   rawCode: string,
   confirmReplace: boolean,
   requestedScope?: ReplacementScope,
+  requestedStrategy?: ThemingStrategy | null,
 ) {
   const presetCode = rawCode.trim();
+  const exists = niramAlreadyExists();
+
+  // A strategy switch on an existing Niram document is destructive (twin
+  // variables are deleted or modes collapse), so it rides the same inline
+  // confirmation as a preset replace.
+  const existingStrategy = exists ? await loadExistingThemeStrategy() : null;
+  const themingChange =
+    requestedStrategy && existingStrategy && requestedStrategy !== existingStrategy
+      ? { from: existingStrategy, to: requestedStrategy }
+      : null;
 
   // The user already confirmed the destructive replace in the UI, or there's
   // nothing to replace yet (first run / Niram page deleted): generate now.
-  if (confirmReplace || !niramAlreadyExists()) {
-    const scope = niramAlreadyExists()
-      ? (requestedScope ?? FULL_REPLACEMENT_SCOPE)
-      : FULL_REPLACEMENT_SCOPE;
+  if (confirmReplace || !exists) {
+    // Copy so forcing theme below never mutates the shared constant.
+    const scope = exists
+      ? { ...(requestedScope ?? FULL_REPLACEMENT_SCOPE) }
+      : { ...FULL_REPLACEMENT_SCOPE };
+    // Converting the theming representation always rebuilds Theme & tokens.
+    if (themingChange) scope.theme = true;
     const availability = await replacementAvailability();
     const scopeError = replacementScopeError(scope, availability);
     if (scopeError) {
       post({ type: "error", message: scopeError });
       return;
     }
-    await runGenerate(presetCode, scope);
+    await runGenerate(
+      presetCode,
+      scope,
+      requestedStrategy ?? existingStrategy ?? "twins",
+    );
     return;
   }
 
@@ -153,14 +217,25 @@ async function handleGenerate(
 
   // Niram exists. Hand off to the UI to show its inline confirmation; it will
   // resend `generate` with `confirmReplace` if the user agrees.
+  let message = "Niram already exists. Choose what to replace.";
+  if (themingChange) {
+    message += ` Theming will be converted from ${describeThemingStrategy(
+      themingChange.from,
+    )} to ${describeThemingStrategy(themingChange.to)}.`;
+  }
   post({
     type: "awaiting-confirmation",
-    message: "Niram already exists. Choose what to replace.",
+    message,
     availability: await replacementAvailability(),
+    themingChange,
   });
 }
 
-async function runGenerate(presetCode: string, scope: ReplacementScope) {
+async function runGenerate(
+  presetCode: string,
+  scope: ReplacementScope,
+  themingStrategy: ThemingStrategy,
+) {
   // One reporter per run: turns weighted phase updates into UI progress
   // messages with a determinate percent, elapsed time, and a detail line.
   // Weights come from the previous run's measured durations when available,
@@ -209,6 +284,7 @@ async function runGenerate(presetCode: string, scope: ReplacementScope) {
       ? await generateFromRegistry(resolved.data, {
           presetCode: resolved.presetCode,
           presetSummary,
+          theming: { strategy: themingStrategy },
         })
       : await loadExistingGeneratedAssets(resolved.presetCode);
     if (!result) {
@@ -320,6 +396,11 @@ async function runGenerate(presetCode: string, scope: ReplacementScope) {
     // fallback to literal values is normal for most presets, so it's tracked in
     // the summary count but not surfaced as a warning.)
     const warnings: string[] = [];
+    if (scope.theme && result.themingFallback) {
+      warnings.push(
+        "Variable modes need a paid Figma plan — generated twin variables instead.",
+      );
+    }
 
     progress.finish();
     writeCalibration(progress.measurements());

@@ -106,6 +106,12 @@ export function createFigmaMock() {
   const effectStyles = new Map<string, FakeEffectStyle>();
   const textStyles = new Map<string, FakeTextStyle>();
 
+  // Max modes per collection, mirroring Figma's plan limits (free/Starter = 1,
+  // Professional = 4, Org/Enterprise = 40+). Tests flip this via
+  // figma.__setModeLimit to exercise paid-tier code paths; the default keeps
+  // production's free-tier assumption honest.
+  let modeLimit = 1;
+
   class FakeVariable {
     id = nextId("var");
     name: string;
@@ -139,9 +145,20 @@ export function createFigmaMock() {
     name: string;
     modes = [{ modeId: nextId("mode"), name: "Mode 1" }];
     variableIds: string[] = [];
+    // Collection-level plugin data store (VariableCollection plugin data
+    // mixin). The generator records the theming strategy here.
+    __pluginData = {} as Record<string, string>;
 
     constructor(name: string) {
       this.name = name;
+    }
+
+    setPluginData(key: string, value: string) {
+      this.__pluginData[key] = value;
+    }
+
+    getPluginData(key: string): string {
+      return key in this.__pluginData ? this.__pluginData[key]! : "";
     }
 
     get defaultModeId() {
@@ -160,17 +177,23 @@ export function createFigmaMock() {
       this.modes = this.modes.filter((m) => m.modeId !== modeId);
     }
 
-    // Production assumes the free tier (single mode) and never calls addMode;
-    // mirror that by throwing. Tests that need extra modes use the test-only
-    // helper below to exercise ensureSingleMode's trim branch.
-    addMode(_name: string): string {
-      throw new Error("addMode is not available on the free tier.");
-    }
-
-    __addModeForTest(name: string): string {
+    // Mirrors Figma's plan-gated addMode: throws with the real error shape
+    // when the collection already holds the tier's mode limit.
+    addMode(name: string): string {
+      if (this.modes.length >= modeLimit) {
+        throw new Error(
+          `in addMode: Limited to ${modeLimit} modes only`,
+        );
+      }
       const mode = { modeId: nextId("mode"), name };
       this.modes.push(mode);
       return mode.modeId;
+    }
+
+    // Removes this collection and all its variables (VariableCollection#remove).
+    remove() {
+      collections.delete(this.id);
+      for (const id of [...this.variableIds]) variables.delete(id);
     }
   }
 
@@ -247,6 +270,20 @@ export function createFigmaMock() {
           type: "VARIABLE_ALIAS",
           id: variable.id,
         };
+      },
+      // Explicit per-node variable mode (setExplicitVariableModeForCollection).
+      // Records collectionId → modeId so tests can assert which mode a node
+      // pins (e.g. the Design System theme swatch halves under the modes
+      // strategy).
+      setExplicitVariableModeForCollection(
+        collection: { id: string },
+        modeId: string,
+      ) {
+        const store = (node.__explicitVariableModes ??= {} as Record<
+          string,
+          string
+        >) as Record<string, string>;
+        store[collection.id] = modeId;
       },
       // Component properties (figma.ComponentNode / ComponentSetNode). Records
       // each definition under a Figma-style suffixed id and returns it, so the
@@ -429,6 +466,8 @@ export function createFigmaMock() {
         collections.set(collection.id, collection);
         return collection;
       },
+      getVariableCollectionByIdAsync: (id: string) =>
+        Promise.resolve(collections.get(id) ?? null),
       getVariableByIdAsync: (id: string) =>
         Promise.resolve(variables.get(id) ?? null),
       createVariable: (
@@ -633,6 +672,30 @@ export function createFigmaMock() {
     closePlugin: createSpy(),
     ui: { postMessage: createSpy(), onmessage: null as unknown },
     viewport: { scrollAndZoomIntoView: createSpy() },
+
+    // clientStorage (figma.clientStorage): in-memory key/value store. The
+    // generate flow persists the UI's theming-strategy selection here.
+    clientStorage: (() => {
+      const store = new Map<string, string>();
+      return {
+        getAsync: (key: string) =>
+          Promise.resolve(store.has(key) ? store.get(key)! : null),
+        setAsync: (key: string, value: string) => {
+          store.set(key, value);
+          return Promise.resolve();
+        },
+        deleteAsync: (key: string) => {
+          store.delete(key);
+          return Promise.resolve();
+        },
+      };
+    })(),
+
+    // Test-only knob mirroring Figma's per-plan mode limits. Default 1 keeps
+    // the free-tier behavior; raise it to exercise paid-tier paths.
+    __setModeLimit: (limit: number) => {
+      modeLimit = limit;
+    },
 
     // Document-level plugin data store (figma.DocumentNode). The generate flow
     // persists the progress reporter's per-phase durations here so the next

@@ -1,6 +1,10 @@
-// Materializes the "shadcn / Theme" variable collection. Light values use
-// the bare key; dark values are emitted as "dark-<key>" since the free tier
-// only supports a single mode per collection.
+// Materializes the "shadcn / Theme" variable collection. Two theming
+// strategies:
+// - "twins" (default): single collection mode; light values use the bare key,
+//   dark values are emitted as "dark-<key>" variables. Works on every plan.
+// - "modes": real Figma variable modes ("Light" + "Dark"); one unprefixed
+//   variable per role carries both values via setValueForMode. Falls back to
+//   twins when the file's tier refuses addMode (free/Starter).
 
 import { findTailwindAlias, parseColor, type Rgba } from "../colors";
 import { FALLBACK_GLYPH_FAMILIES, loadFontFamilies } from "../fonts";
@@ -10,12 +14,18 @@ import {
   shadcnRadiusScale,
   type ResolvedFonts,
 } from "../primitives";
+import type { ThemingStrategy } from "../theming";
 import {
   ensureSingleMode,
+  ensureThemeModes,
   getOrCreateCollection,
   getOrCreateVariable,
 } from "./collections";
 import { COLLECTION_THEME, THEME_NUMBER_KEYS } from "./constants";
+import {
+  readThemeStrategy,
+  writeThemeStrategy,
+} from "./themeStrategy";
 import type {
   ResolvedRegistry,
   TailwindColorVarMap,
@@ -27,6 +37,10 @@ export type ThemeResult = {
   variableCount: number;
   unaliasedCount: number;
   maps: ThemeVariableMaps;
+  // The strategy the collection ended up with and whether a requested "modes"
+  // run had to fall back to twins (the file's tier refused addMode).
+  strategy: ThemingStrategy;
+  fellBack: boolean;
   // The resolved family names + the variables backing them, so page builders
   // can load the fonts and bind text nodes to them.
   fonts: ResolvedFonts;
@@ -74,13 +88,43 @@ function readStringValues(
 export async function ensureThemeCollection(
   data: ResolvedRegistry,
   tailwindColors: TailwindColorVarMap,
+  theming?: { strategy?: ThemingStrategy },
 ): Promise<ThemeResult> {
   const light = data.cssVars.light;
   const dark = data.cssVars.dark;
 
   const collection = await getOrCreateCollection(COLLECTION_THEME);
-  ensureSingleMode(collection, "Default");
-  const modeId = collection.modes[0]!.modeId;
+
+  // Resolve the effective strategy: an explicit request wins; otherwise keep
+  // whatever the existing collection already uses (idempotent re-runs from
+  // callers that don't pass the option), defaulting to twins.
+  const previousStrategy = readThemeStrategy(collection);
+  const requested = theming?.strategy;
+  const requestedStrategy: ThemingStrategy = requested ?? previousStrategy ?? "twins";
+
+  let modeId = "";
+  let modeIds: { light: string; dark: string } | undefined;
+  let fellBack = false;
+  if (requestedStrategy === "modes") {
+    try {
+      const ids = ensureThemeModes(collection);
+      modeId = ids.lightModeId;
+      modeIds = { light: ids.lightModeId, dark: ids.darkModeId };
+    } catch {
+      // The file's tier refused addMode (free/Starter caps collections at one
+      // mode). Collapse back to a single Default mode and emit twins instead.
+      fellBack = true;
+      ensureSingleMode(collection, "Default");
+      modeId = collection.modes[0]!.modeId;
+      modeIds = undefined;
+    }
+  } else {
+    ensureSingleMode(collection, "Default");
+    modeId = collection.modes[0]!.modeId;
+  }
+
+  const strategy: ThemingStrategy = fellBack ? "twins" : requestedStrategy;
+  writeThemeStrategy(collection, strategy);
 
   const allKeys = new Set<string>([
     ...Object.keys(light),
@@ -94,19 +138,31 @@ export async function ensureThemeCollection(
     light: new Map(),
     dark: new Map(),
   };
+  if (modeIds) maps.modeIds = modeIds;
 
-  // Free-tier Figma collections only support one mode. Instead of two modes,
-  // we emit one variable per (key, scheme): "background" carries the light
-  // value, "dark-background" carries the dark value. Designers swap by
-  // re-binding to the dark-* variants when they want a dark surface.
+  // Twins: one variable per (key, scheme) — "background" carries the light
+  // value, "dark-background" the dark one. Modes: one variable per key, each
+  // pass writing a different mode id on the same variable. Designers swap
+  // themes by re-binding (twins) or Figma's native mode switcher (modes).
   const passes: Array<{
     prefix: string;
+    modeId: string;
     values: Record<string, string>;
     target: Map<string, Variable>;
-  }> = [
-    { prefix: "", values: light, target: maps.light },
-    { prefix: "dark-", values: dark, target: maps.dark },
-  ];
+  }> =
+    strategy === "modes" && modeIds
+      ? [
+          { prefix: "", modeId: modeIds.light, values: light, target: maps.light },
+          { prefix: "", modeId: modeIds.dark, values: dark, target: maps.dark },
+        ]
+      : [
+          { prefix: "", modeId, values: light, target: maps.light },
+          { prefix: "dark-", modeId, values: dark, target: maps.dark },
+        ];
+
+  // Under the modes strategy both passes write the SAME variable (one per
+  // role), so count each variable once — not once per pass.
+  const countedNames = new Set<string>();
 
   for (const key of allKeys) {
     const isNumber = THEME_NUMBER_KEYS.has(key);
@@ -124,8 +180,11 @@ export async function ensureThemeCollection(
           "FLOAT",
         );
         const number = parseLengthRem(rawValue);
-        if (number !== null) variable.setValueForMode(modeId, number);
-        variableCount += 1;
+        if (number !== null) variable.setValueForMode(pass.modeId, number);
+        if (!countedNames.has(variableName)) {
+          countedNames.add(variableName);
+          variableCount += 1;
+        }
         pass.target.set(key, variable);
         continue;
       }
@@ -138,14 +197,23 @@ export async function ensureThemeCollection(
 
       const applied = applyThemeColor(
         variable,
-        modeId,
+        pass.modeId,
         rawValue,
         tailwindColors,
       );
       if (!applied.aliased) unaliasedCount += 1;
-      variableCount += 1;
+      if (!countedNames.has(variableName)) {
+        countedNames.add(variableName);
+        variableCount += 1;
+      }
       pass.target.set(key, variable);
     }
+  }
+
+  // Migration cleanup: moving from twins to modes leaves the old "dark-*"
+  // twin variables behind once the unprefixed variables carry both values.
+  if (previousStrategy === "twins" && strategy === "modes") {
+    await removeDarkTwins(collection);
   }
 
   // Font families come from the preset (body + heading), not from cssVars.
@@ -178,11 +246,15 @@ export async function ensureThemeCollection(
     ...FALLBACK_GLYPH_FAMILIES,
   ]);
 
-  bodyVar.setValueForMode(modeId, fonts.body);
-  variableCount += 1;
-
-  headingVar.setValueForMode(modeId, fonts.heading);
-  variableCount += 1;
+  // Preset-driven scalars (fonts, radius scale) are theme-invariant, so write
+  // them to every mode — under the modes strategy a freshly added Dark mode
+  // copies Light's values, but a re-run with a different preset must not leave
+  // stale families behind in either column.
+  for (const mode of collection.modes) {
+    bodyVar.setValueForMode(mode.modeId, fonts.body);
+    headingVar.setValueForMode(mode.modeId, fonts.heading);
+  }
+  variableCount += 2;
 
   // The shadcn radius scale derived from the preset's `--radius`. These live in
   // the theme collection (not the fixed Tailwind primitives) because they are
@@ -197,7 +269,9 @@ export async function ensureThemeCollection(
       `radius/${token.name}`,
       "FLOAT",
     );
-    variable.setValueForMode(modeId, token.value);
+    for (const mode of collection.modes) {
+      variable.setValueForMode(mode.modeId, token.value);
+    }
     radiusScale.set(token.name, variable);
     variableCount += 1;
   }
@@ -206,10 +280,20 @@ export async function ensureThemeCollection(
     variableCount,
     unaliasedCount,
     maps,
+    strategy,
+    fellBack,
     fonts,
     fontVars: { body: bodyVar, heading: headingVar },
     radiusScale,
   };
+}
+
+// Removes leftover "dark-*" twin variables after a twins → modes migration.
+async function removeDarkTwins(collection: VariableCollection): Promise<void> {
+  for (const id of [...collection.variableIds]) {
+    const variable = await figma.variables.getVariableByIdAsync(id);
+    if (variable && variable.name.indexOf("dark-") === 0) variable.remove();
+  }
 }
 
 function applyThemeColor(

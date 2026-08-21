@@ -4,12 +4,10 @@
 
 import { readEffectStyles } from "../effectStyles";
 import { readTextStyles } from "../textStyles";
-import {
-  COLLECTION_PRIMITIVES,
-  COLLECTION_TAILWIND_COLORS,
-  COLLECTION_THEME,
-} from "./constants";
-import type { GenerateResult } from "./types";
+import { COLLECTION_PRIMITIVES, COLLECTION_TAILWIND_COLORS, COLLECTION_THEME } from "./constants";
+import { THEME_MODE_DARK, THEME_MODE_LIGHT } from "./collections";
+import { readThemeStrategy } from "./themeStrategy";
+import type { GenerateResult, ThemeVariableMaps } from "./types";
 
 async function variablesFor(
   collection: VariableCollection,
@@ -62,25 +60,52 @@ export async function loadExistingGeneratedAssets(
   const primitiveMap = new Map<string, Variable>();
   for (const variable of primitives) primitiveMap.set(variable.name, variable);
 
-  const light = new Map<string, Variable>();
-  const dark = new Map<string, Variable>();
+  const theme: ThemeVariableMaps = {
+    light: new Map(),
+    dark: new Map(),
+  };
   const radiusScale = new Map<string, Variable>();
   let body: Variable | undefined;
   let heading: Variable | undefined;
+
+  // The recorded strategy decides how the maps are rebuilt. Twins: dark values
+  // live in separate "dark-<name>" variables. Modes: one unprefixed variable
+  // per role carries both Light/Dark values, so the same variables populate
+  // both maps (consumers bind the variable; Figma resolves the mode).
+  const strategy = readThemeStrategy(themeCollection);
   for (const variable of themeVariables) {
     if (variable.name === "font-sans") body = variable;
     else if (variable.name === "font-heading") heading = variable;
     else if (variable.name.indexOf("radius/") === 0) {
       radiusScale.set(variable.name.slice("radius/".length), variable);
-    } else if (variable.name.indexOf("dark-") === 0) {
-      dark.set(variable.name.slice("dark-".length), variable);
+    } else if (strategy !== "modes" && variable.name.indexOf("dark-") === 0) {
+      theme.dark.set(variable.name.slice("dark-".length), variable);
     } else {
-      light.set(variable.name, variable);
+      theme.light.set(variable.name, variable);
+      if (strategy === "modes") theme.dark.set(variable.name, variable);
     }
   }
 
-  if (tailwindColors.size === 0 || primitiveMap.size === 0 || light.size === 0) {
+  if (
+    tailwindColors.size === 0 ||
+    primitiveMap.size === 0 ||
+    theme.light.size === 0
+  ) {
     return null;
+  }
+
+  // Under the modes strategy, surface the Light/Dark mode ids so consumers can
+  // pin explicit modes (e.g. the Design System theme swatches).
+  if (strategy === "modes") {
+    const lightMode = themeCollection.modes.find(
+      (mode) => mode.name === THEME_MODE_LIGHT,
+    );
+    const darkMode = themeCollection.modes.find(
+      (mode) => mode.name === THEME_MODE_DARK,
+    );
+    if (lightMode && darkMode) {
+      theme.modeIds = { light: lightMode.modeId, dark: darkMode.modeId };
+    }
   }
 
   const modeId = themeCollection.modes[0] ? themeCollection.modes[0]!.modeId : "";
@@ -95,13 +120,15 @@ export async function loadExistingGeneratedAssets(
       { name: COLLECTION_THEME, variableCount: themeVariables.length },
     ],
     fallbackThemeColors: 0,
+    themingStrategy: strategy ?? "twins",
+    themingFallback: false,
     fonts: { body: bodyFamily, heading: headingFamily },
     effectStyles,
     textStyles,
     variables: {
       tailwindColors,
       primitives: primitiveMap,
-      theme: { light, dark },
+      theme,
       fonts: { body, heading },
       radiusScale,
     },

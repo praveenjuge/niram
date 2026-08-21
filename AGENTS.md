@@ -170,8 +170,21 @@ shadcn-ui/           # local clone, git-ignored, reference only
 - **Idempotent generation.** Re-running with a different preset must reuse
   existing collections/variables and update values in place. Don't create
   duplicate collections or rename existing variables.
-- **Single-mode collections.** `shadcn / Theme` uses one mode with `dark-*`
-  twin variables (Figma free tier is 1-mode only). Don't switch to multi-mode.
+- **Theming strategies: twins (default) or variable modes.** `shadcn / Theme`
+  materializes light/dark in one of two ways, recorded on the collection via
+  the `niramThemeStrategy` plugin-data key (`src/generator/themeStrategy.ts`):
+  - `twins` (default, every plan): a single "Default" mode; dark values live
+    in separate `dark-*` variables.
+  - `modes` (opt-in, paid plans): real "Light" + "Dark" modes; one unprefixed
+    variable per role carries both values. Free/Starter files cap collections
+    at 1 mode (`addMode` throws), so the UI gates the option behind
+    `probeMultiModeSupport()` (scratch-collection try/catch — there is no plan
+    API) and the generator falls back to twins with a warning if the tier
+    refuses. Only this collection may go multi-mode; `Tailwind / Colors` and
+    `Tailwind / Primitives` always stay single-mode so alias resolution is
+    plan-independent. A strategy switch on an existing document rides the
+    replace-confirmation flow and migrates in place (twins→modes deletes stale
+    `dark-*` variables; modes→twins collapses modes via `ensureSingleMode`).
 - **Alias-first colors.** Theme colors that match a Tailwind OKLCH shade must
   be written as variable aliases, not literal colors. Use the matcher in
   `apps/figma-plugin/src/colors/` rather than re-implementing the lookup.

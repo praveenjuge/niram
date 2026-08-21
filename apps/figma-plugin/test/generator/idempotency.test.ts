@@ -116,6 +116,55 @@ describe("generation idempotency", () => {
   });
 });
 
+describe("generation idempotency · variable modes strategy", () => {
+  async function generateModes(code: string, font?: string) {
+    return generateFromRegistry(resolved(code), {
+      presetCode: code,
+      presetSummary: font ? { font } : undefined,
+      theming: { strategy: "modes" },
+    });
+  }
+
+  it("reuses collections, modes, and variables when re-run", async () => {
+    liveFigma().__setModeLimit(4);
+    await generateModes("b2fA", "geist");
+    const first = await countState(liveFigma());
+
+    await generateModes("b2fA", "geist");
+    const second = await countState(liveFigma());
+
+    expect(second).toEqual(first);
+  });
+
+  it("does not duplicate collections when switching presets under modes", async () => {
+    liveFigma().__setModeLimit(4);
+    await generateModes("b2fA", "geist");
+    const first = await countState(liveFigma());
+
+    await generateModes("bIkeymG", "inter");
+    const second = await countState(liveFigma());
+
+    expect(second.collectionCount).toBe(first.collectionCount);
+    expect(second.collectionCount).toBe(3);
+  });
+
+  it("converges to an identical tree regardless of run order under modes", async () => {
+    liveFigma().__setModeLimit(4);
+    await generateModes("b2fA", "geist");
+    await generateModes("bIkeymG", "inter");
+    const pathA = await snapshotCollections(liveFigma());
+
+    (globalThis as Record<string, unknown>).figma = (
+      await import("../figma-mock")
+    ).createFigmaMock();
+    liveFigma().__setModeLimit(4);
+    await generateModes("bIkeymG", "inter");
+    const pathB = await snapshotCollections(liveFigma());
+
+    expect(pathA).toEqual(pathB);
+  });
+});
+
 describe("golden variable tree", () => {
   beforeEach(async () => {
     await generate("b2fA", "geist");

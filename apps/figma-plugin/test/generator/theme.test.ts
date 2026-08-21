@@ -4,6 +4,7 @@ import { ensureTailwindColorCollection } from "../../src/generator/tailwindColor
 import { ensureThemeCollection } from "../../src/generator/theme";
 import type { ResolvedRegistry } from "../../src/generator/types";
 import { resetLoadedFontsCache } from "../../src/fonts";
+import type { FigmaMock } from "../figma-mock";
 
 type AnyVar = { id: string; valuesByMode: Record<string, unknown> };
 type Alias = { type: "VARIABLE_ALIAS"; id: string };
@@ -253,5 +254,144 @@ describe("ensureThemeCollection", () => {
         originalLoadFont;
       bodyVar.setValueForMode = originalSetValue;
     }
+  });
+});
+
+describe("ensureThemeCollection · variable modes strategy", () => {
+  function liveFigma(): FigmaMock {
+    return (globalThis as unknown as { figma: FigmaMock }).figma;
+  }
+
+  function themeCollection() {
+    return figma.variables
+      .getLocalVariableCollectionsAsync()
+      .then((all) => all.find((c) => c.name === "shadcn / Theme")!);
+  }
+
+  it("writes light and dark values into one unprefixed variable per role", async () => {
+    liveFigma().__setModeLimit(4);
+    const tw = await ensureTailwindColorCollection();
+    const result = await ensureThemeCollection(makeRegistry(), tw, {
+      strategy: "modes",
+    });
+
+    expect(result.strategy).toBe("modes");
+    expect(result.fellBack).toBe(false);
+
+    const collection = await themeCollection();
+    expect(collection.modes.map((m) => m.name)).toEqual(["Light", "Dark"]);
+    const lightId = collection.modes[0]!.modeId;
+    const darkId = collection.modes[1]!.modeId;
+
+    // Both maps reference the SAME variable; it carries both values.
+    const lightBg = result.maps.light.get("background") as unknown as AnyVar;
+    const darkBg = result.maps.dark.get("background") as unknown as AnyVar;
+    expect(darkBg.id).toBe(lightBg.id);
+    expect(lightBg.name).toBe("background");
+    expect(lightBg.valuesByMode[lightId]).toEqual({
+      type: "VARIABLE_ALIAS",
+      id: (tw.get("white") as unknown as AnyVar).id,
+    });
+    expect(lightBg.valuesByMode[darkId]).toEqual({
+      type: "VARIABLE_ALIAS",
+      id: (tw.get("black") as unknown as AnyVar).id,
+    });
+
+    // The mode ids ride along for consumers that pin explicit modes.
+    expect(result.maps.modeIds).toEqual({ light: lightId, dark: darkId });
+  });
+
+  it("accounts for one variable per key plus fonts and radius steps", async () => {
+    liveFigma().__setModeLimit(4);
+    const tw = await ensureTailwindColorCollection();
+    const result = await ensureThemeCollection(makeRegistry(), tw, {
+      strategy: "modes",
+    });
+    // Union of light+dark keys is 4 (background, primary, custom, radius)
+    // + 2 font variables + 7 radius-scale steps.
+    expect(result.variableCount).toBe(13);
+  });
+
+  it("records the strategy on the collection", async () => {
+    liveFigma().__setModeLimit(4);
+    const tw = await ensureTailwindColorCollection();
+    await ensureThemeCollection(makeRegistry(), tw, { strategy: "modes" });
+    const collection = await themeCollection();
+    expect(collection.getPluginData("niramThemeStrategy")).toBe("modes");
+  });
+
+  it("falls back to twins when the tier refuses addMode", async () => {
+    // Mode limit stays at the free-tier default of 1.
+    const tw = await ensureTailwindColorCollection();
+    const result = await ensureThemeCollection(makeRegistry(), tw, {
+      strategy: "modes",
+    });
+
+    expect(result.strategy).toBe("twins");
+    expect(result.fellBack).toBe(true);
+
+    const collection = await themeCollection();
+    expect(collection.modes.map((m) => m.name)).toEqual(["Default"]);
+    expect(collection.getPluginData("niramThemeStrategy")).toBe("twins");
+
+    const darkBg = result.maps.dark.get("background") as unknown as {
+      name: string;
+    };
+    expect(darkBg.name).toBe("dark-background");
+  });
+
+  it("removes dark-* twins when migrating from twins to modes", async () => {
+    const tw = await ensureTailwindColorCollection();
+    // First run: twins (default).
+    await ensureThemeCollection(makeRegistry(), tw);
+    let collection = await themeCollection();
+    let names: string[] = [];
+    for (const id of collection.variableIds) {
+      const variable = await figma.variables.getVariableByIdAsync(id);
+      if (variable) names.push(variable.name);
+    }
+    expect(names).toContain("dark-background");
+
+    // Second run: modes.
+    liveFigma().__setModeLimit(4);
+    await ensureThemeCollection(makeRegistry(), tw, { strategy: "modes" });
+    collection = await themeCollection();
+
+    names = [];
+    for (const id of collection.variableIds) {
+      const variable = await figma.variables.getVariableByIdAsync(id);
+      if (variable) names.push(variable.name);
+    }
+    expect(names.filter((name) => name.indexOf("dark-") === 0)).toEqual([]);
+    expect(names).toContain("background");
+  });
+
+  it("collapses modes and recreates twins when migrating back", async () => {
+    liveFigma().__setModeLimit(4);
+    const tw = await ensureTailwindColorCollection();
+    await ensureThemeCollection(makeRegistry(), tw, { strategy: "modes" });
+
+    // Second run without a strategy request keeps the recorded "modes"
+    // strategy (idempotent re-run), so pass twins explicitly.
+    await ensureThemeCollection(makeRegistry(), tw, { strategy: "twins" });
+    const collection = await themeCollection();
+    expect(collection.modes.map((m) => m.name)).toEqual(["Default"]);
+
+    const names: string[] = [];
+    for (const id of collection.variableIds) {
+      const variable = await figma.variables.getVariableByIdAsync(id);
+      if (variable) names.push(variable.name);
+    }
+    expect(names).toContain("dark-background");
+  });
+
+  it("keeps the recorded strategy when no explicit request is made", async () => {
+    liveFigma().__setModeLimit(4);
+    const tw = await ensureTailwindColorCollection();
+    await ensureThemeCollection(makeRegistry(), tw, { strategy: "modes" });
+    const result = await ensureThemeCollection(makeRegistry(), tw);
+    expect(result.strategy).toBe("modes");
+    const collection = await themeCollection();
+    expect(collection.modes.map((m) => m.name)).toEqual(["Light", "Dark"]);
   });
 });

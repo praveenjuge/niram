@@ -72,6 +72,55 @@ describe("sandbox under QuickJS", () => {
     expect(posted.find((m) => m.type === "done")).toBeUndefined();
   }, 30_000);
 
+  it("reports theming state (probe + persisted strategy) after ready", async () => {
+    // Free-tier default: the probe reports multi-mode support as unavailable.
+    const { posted } = await runSandboxInQuickJS("b2fA");
+    const theming = posted.find((m) => m.type === "theming-state");
+    expect(theming).toMatchObject({
+      type: "theming-state",
+      strategy: "twins",
+      modesAvailable: false,
+    });
+  }, 30_000);
+
+  it("generates Light/Dark variable modes on a paid tier", async () => {
+    const { posted, summary } = await runSandboxInQuickJS("b2fA", {
+      modeLimit: 4,
+      theming: { strategy: "modes" },
+    });
+
+    expect(posted.find((m) => m.type === "error")).toBeUndefined();
+    expect(posted.filter((m) => m.type === "done")).toHaveLength(1);
+    // The capability probe now reports the paid tier.
+    expect(posted.find((m) => m.type === "theming-state")).toMatchObject({
+      type: "theming-state",
+      modesAvailable: true,
+    });
+
+    const theme = summary.collections.find((c) => c.name === "shadcn / Theme");
+    expect(theme).toBeDefined();
+    expect(theme!.modes).toEqual(["Light", "Dark"]);
+    // The other collections stay single-mode regardless of strategy.
+    for (const collection of summary.collections) {
+      if (collection.name !== "shadcn / Theme") {
+        expect(collection.modes).toEqual(["Default"]);
+      }
+    }
+  }, 30_000);
+
+  it("falls back to twin variables with a warning when the tier refuses modes", async () => {
+    // No modeLimit override: the mock stays at the free tier's single mode.
+    const { posted } = await runSandboxInQuickJS("b2fA", {
+      theming: { strategy: "modes" },
+    });
+
+    expect(posted.filter((m) => m.type === "done")).toHaveLength(1);
+    const done = posted.find((m) => m.type === "done");
+    expect(done!.warnings).toContain(
+      "Variable modes need a paid Figma plan — generated twin variables instead.",
+    );
+  }, 30_000);
+
   it("replaces only Blocks while preserving upstream region nodes", async () => {
     const result = await runReplacementInQuickJS("b2fA", {
       theme: false,

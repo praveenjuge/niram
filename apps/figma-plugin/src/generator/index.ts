@@ -27,6 +27,9 @@ export type {
   ThemeFontVars,
   ThemeVariableMaps,
 } from "./types";
+export type { ThemingStrategy } from "../theming";
+export { loadExistingThemeStrategy } from "./themeStrategy";
+export { probeMultiModeSupport } from "./collections";
 export type { EffectStyleMap } from "../effectStyles";
 export type { TextStyleMap } from "../textStyles";
 export { withShadcnRadius } from "./radius";
@@ -40,7 +43,9 @@ export async function generateFromRegistry(
   const primitives = await ensurePrimitivesCollection({
     fontFamily: resolveFontFamily(options.presetSummary?.["font"]),
   });
-  const themeResult = await ensureThemeCollection(data, colorVars);
+  const themeResult = await ensureThemeCollection(data, colorVars, {
+    strategy: options.theming?.strategy,
+  });
 
   // Publish the shadow + blur effect styles. Their blur radii bind to the
   // `blur/*` primitives created just above, so the styles stay in sync.
@@ -69,6 +74,8 @@ export async function generateFromRegistry(
       },
     ],
     fallbackThemeColors: themeResult.unaliasedCount,
+    themingStrategy: themeResult.strategy,
+    themingFallback: themeResult.fellBack,
     fonts: themeResult.fonts,
     effectStyles,
     textStyles,

@@ -4,6 +4,8 @@
 import { extractPresetCode } from "./preset";
 import { generateRandomResolvablePreset } from "./registry";
 import { POPULAR_PRESETS } from "./popularPresets";
+import type { ThemingStrategy } from "./theming";
+import { describeThemingStrategy, normalizeThemingStrategy } from "./theming";
 import type { PluginToUi, UiToPlugin } from "./messages";
 import {
   completeReplacementScope,
@@ -38,6 +40,20 @@ const replaceNote = document.getElementById(
 const scopeInputs = Array.from(
   replaceOptions.querySelectorAll<HTMLInputElement>("input[data-scope]"),
 );
+const themingOptions = document.getElementById(
+  "theming-options",
+) as HTMLFieldSetElement;
+const themingRadios = Array.from(
+  themingOptions.querySelectorAll<HTMLInputElement>(
+    "input[name='theming-strategy']",
+  ),
+);
+const modesHint = document.getElementById(
+  "modes-hint",
+) as HTMLSpanElement;
+const themingNote = document.getElementById(
+  "theming-note",
+) as HTMLParagraphElement;
 
 // Created in renderPopularPresets, kept for direct shuffle triggering.
 let shuffleButton: HTMLButtonElement;
@@ -47,6 +63,13 @@ let busy = false;
 // sandbox reports Niram already exists; cleared once the user confirms/cancels.
 let pendingPresetCode: string | null = null;
 let pendingAvailability: ReplacementAvailability = FULL_REPLACEMENT_SCOPE;
+
+// Theming state. `modesAvailable` is null until the sandbox's capability probe
+// (a scratch addMode try/catch — there is no plan API) reports back; the Modes
+// radio stays disabled while unknown so a free-tier user never hits a
+// mid-generate failure.
+let themingStrategy: ThemingStrategy = "twins";
+let modesAvailable: boolean | null = null;
 
 function postToPlugin(message: UiToPlugin) {
   parent.postMessage({ pluginMessage: message }, "*");
@@ -230,6 +253,38 @@ function runPreset(
     presetCode,
     confirmReplace,
     replacementScope,
+    theming: { strategy: themingStrategy },
+  });
+}
+
+// Applies the sandbox's theming report: persisted strategy + whether this
+// file's plan supports multiple variable modes. A saved "modes" preference on
+// a free-tier file downgrades to twins (the option stays visible but
+// disabled, with a hint explaining why).
+function applyThemingState(strategy: ThemingStrategy, available: boolean) {
+  modesAvailable = available;
+  themingStrategy = available ? strategy : "twins";
+  for (const radio of themingRadios) {
+    const value = normalizeThemingStrategy(radio.value);
+    if (!value) continue;
+    if (value === "modes") {
+      radio.disabled = !available;
+      radio.checked = themingStrategy === "modes";
+      modesHint.hidden = available;
+      modesHint.textContent = available
+        ? ""
+        : "Requires a paid Figma plan";
+    }
+  }
+}
+
+for (const radio of themingRadios) {
+  radio.addEventListener("change", () => {
+    const value = normalizeThemingStrategy(radio.value);
+    if (!value || radio.disabled) return;
+    themingStrategy = value;
+    // Persist so the next session opens with the same choice.
+    postToPlugin({ type: "set-theming", strategy: value });
   });
 }
 
@@ -373,6 +428,11 @@ window.addEventListener("message", (event: MessageEvent) => {
     return;
   }
 
+  if (message.type === "theming-state") {
+    applyThemingState(message.strategy, message.modesAvailable);
+    return;
+  }
+
   if (message.type === "progress") {
     updateProgress(message);
     return;
@@ -387,6 +447,15 @@ window.addEventListener("message", (event: MessageEvent) => {
     pendingAvailability = message.availability;
     writeScope(FULL_REPLACEMENT_SCOPE);
     syncReplacementScope();
+    if (message.themingChange) {
+      themingNote.hidden = false;
+      themingNote.textContent = `Theming will be converted from ${describeThemingStrategy(
+        message.themingChange.from,
+      )} to ${describeThemingStrategy(message.themingChange.to)}.`;
+    } else {
+      themingNote.hidden = true;
+      themingNote.textContent = "";
+    }
     resetProgress();
     setConfirmVisible(true);
     return;

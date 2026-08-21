@@ -4,17 +4,27 @@ import type { EffectStyleMap } from "../effectStyles";
 import type { TextStyleMap } from "../textStyles";
 import type { ResolvedFonts } from "../primitives";
 import type { ResolvedRegistry } from "../registry";
+import type { ThemingStrategy } from "../theming";
 
 export type GenerateOptions = {
   presetCode: string;
   presetSummary?: Record<string, string | undefined>;
+  // Theming strategy for the `shadcn / Theme` collection. Absent keeps the
+  // strategy already recorded on an existing collection (or "twins" fresh).
+  theming?: { strategy: ThemingStrategy };
 };
 
 export type ThemeVariableMaps = {
   // Variables in `shadcn / Theme` keyed by their bare name (e.g. "background")
-  // for the light pass, and "dark-<name>" for the dark pass.
+  // for the light pass, and "dark-<name>" for the dark pass. Under the
+  // variable-modes strategy both maps hold the SAME variables (one per role,
+  // carrying Light/Dark values); under twins they are distinct variables.
   light: Map<string, Variable>;
   dark: Map<string, Variable>;
+  // Present only under the variable-modes strategy: the collection's Light and
+  // Dark mode ids, so consumers can pin explicit modes (e.g. the Design System
+  // theme swatches rendering both schemes from one variable).
+  modeIds?: { light: string; dark: string };
 };
 
 export type PrimitiveVariableMap = Map<string, Variable>;
@@ -33,6 +43,10 @@ export type GenerateResult = {
   presetCode: string;
   collections: { name: string; variableCount: number }[];
   fallbackThemeColors: number;
+  // The theming strategy the theme collection ended up with, and whether a
+  // requested "modes" run had to fall back to twins (tier refused addMode).
+  themingStrategy: ThemingStrategy;
+  themingFallback: boolean;
   // The resolved family names that back the font variables, so page builders
   // can load the matching fonts before drawing.
   fonts: ResolvedFonts;
