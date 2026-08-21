@@ -16,7 +16,14 @@ import {
 } from "./icons";
 import { decodePreset } from "./preset";
 import { resolvePreset } from "./registry";
-import { ProgressReporter } from "./progress";
+import {
+  loadAllPagesOnce,
+  resetPageLoadCache,
+} from "./async";
+import {
+  ProgressReporter,
+  type ProgressCalibration,
+} from "./progress";
 import type { PluginToUi, UiToPlugin } from "./messages";
 import {
   FULL_REPLACEMENT_SCOPE,
@@ -24,6 +31,36 @@ import {
   type ReplacementAvailability,
   type ReplacementScope,
 } from "./replacement";
+
+// Root-level plugin data holding the previous run's per-phase durations so the
+// next run's progress bar tracks real time (see ProgressReporter calibration).
+const CALIBRATION_KEY = "niramProgressCalibration";
+
+function readCalibration(): ProgressCalibration | undefined {
+  try {
+    const raw = figma.root.getPluginData(CALIBRATION_KEY);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return undefined;
+    const clean: ProgressCalibration = {};
+    for (const key of Object.keys(parsed as Record<string, unknown>)) {
+      const value = (parsed as Record<string, unknown>)[key];
+      if (typeof value === "number" && value > 0) clean[key] = value;
+    }
+    return Object.keys(clean).length > 0 ? clean : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeCalibration(measurements: ProgressCalibration): void {
+  try {
+    figma.root.setPluginData(CALIBRATION_KEY, JSON.stringify(measurements));
+  } catch {
+    // Calibration is best-effort; a host without root plugin data just keeps
+    // the static progress plan.
+  }
+}
 
 figma.showUI(__html__, { width: 360, height: 360, themeColors: true });
 
@@ -37,6 +74,9 @@ figma.ui.onmessage = async (message: UiToPlugin) => {
   if (!message || typeof message !== "object") return;
 
   if (message.type === "generate") {
+    // Each run re-syncs with the document once; the shared promise in
+    // loadAllPagesOnce dedupes the per-builder reloads within the run.
+    resetPageLoadCache();
     await handleGenerate(
       message.presetCode,
       message.confirmReplace === true,
@@ -57,7 +97,7 @@ function niramAlreadyExists(): boolean {
 }
 
 async function replacementAvailability(): Promise<ReplacementAvailability> {
-  await figma.loadAllPagesAsync();
+  await loadAllPagesOnce();
   const page = figma.root.children.find(
     (child) => child.type === "PAGE" && child.name === "Niram",
   ) as PageNode | undefined;
@@ -123,7 +163,11 @@ async function handleGenerate(
 async function runGenerate(presetCode: string, scope: ReplacementScope) {
   // One reporter per run: turns weighted phase updates into UI progress
   // messages with a determinate percent, elapsed time, and a detail line.
+  // Weights come from the previous run's measured durations when available,
+  // so the bar tracks real time instead of static guesses; this run records
+  // fresh measurements for the next one.
   const progress = new ProgressReporter({
+    calibration: readCalibration(),
     emit: (update) => {
       post({
         type: "progress",
@@ -183,7 +227,7 @@ async function runGenerate(presetCode: string, scope: ReplacementScope) {
       result.variables.radiusScale,
     );
 
-    await figma.loadAllPagesAsync();
+    await loadAllPagesOnce();
     let niramPage = figma.root.children.find(
       (child) => child.type === "PAGE" && child.name === "Niram",
     ) as PageNode | undefined;
@@ -278,6 +322,7 @@ async function runGenerate(presetCode: string, scope: ReplacementScope) {
     const warnings: string[] = [];
 
     progress.finish();
+    writeCalibration(progress.measurements());
 
     post({
       type: "done",

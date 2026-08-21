@@ -253,31 +253,39 @@ function hasPixelOverride(node: SceneNode, field: string): boolean {
   );
 }
 
-// Apply the matching text style to a single text node, when its fontSize +
-// weight land on the Tailwind scale and it carries no deliberate metric
-// override. Best-effort: host rejections are swallowed.
-async function applyTextStyleToNode(
+// Resolve the published style id a text node should carry, or undefined when
+// the node isn't eligible: off-scale metrics, a deliberate pixel override, a
+// family the styles don't cover, or a node that already references the target
+// style (re-runs shouldn't re-await a host call to arrive where it already is).
+// Pure sync reads so the collection phase of a sweep stays cheap.
+function textStyleTarget(
   node: SceneNode,
   styles: TextStyleMap,
-): Promise<void> {
-  if (node.type !== "TEXT") return;
-  if (hasPixelOverride(node, "lineHeight")) return;
-  if (hasPixelOverride(node, "letterSpacing")) return;
+): string | undefined {
+  if (node.type !== "TEXT") return undefined;
+  if (hasPixelOverride(node, "lineHeight")) return undefined;
+  if (hasPixelOverride(node, "letterSpacing")) return undefined;
 
   // A text style sets the font family too. Only map a node that already uses
   // one of the families the styles resolved to, so a heading node on a
   // distinct heading font is never silently retagged to the body font.
   const family = textNodeFamily(node);
-  if (family === undefined || !styles.appliesToFamily(family)) return;
+  if (family === undefined || !styles.appliesToFamily(family)) return undefined;
 
   const fontSize = (node as unknown as { fontSize?: unknown }).fontSize;
-  if (typeof fontSize !== "number") return;
+  if (typeof fontSize !== "number") return undefined;
   const weight = textNodeWeight(node);
-  if (weight === undefined) return;
+  if (weight === undefined) return undefined;
 
   const id = styles.idForMetrics(fontSize, weight);
-  if (!id) return;
+  if (!id) return undefined;
 
+  const current = (node as unknown as { textStyleId?: unknown }).textStyleId;
+  if (typeof current === "string" && current === id) return undefined;
+  return id;
+}
+
+async function setTextStyleId(node: SceneNode, id: string): Promise<void> {
   const setter = (
     node as unknown as { setTextStyleIdAsync?: (id: string) => Promise<void> }
   ).setTextStyleIdAsync;
@@ -289,33 +297,84 @@ async function applyTextStyleToNode(
   }
 }
 
+// Apply the matching text style to a single text node, when its fontSize +
+// weight land on the Tailwind scale and it carries no deliberate metric
+// override. Best-effort: host rejections are swallowed.
+async function applyTextStyleToNode(
+  node: SceneNode,
+  styles: TextStyleMap,
+): Promise<void> {
+  const id = textStyleTarget(node, styles);
+  if (id === undefined) return;
+  await setTextStyleId(node, id);
+}
+
 // Walk a node subtree and map every eligible text node onto a published text
 // style. Run once per page after the section builders finish (and before the
 // primitive token sweep, which then skips text metrics the style now owns).
+// Instance subtrees are skipped: Figma locks them to the source component, so
+// styling their text would only burn a host round trip on a guaranteed throw.
 export async function applyTextStyles(
   root: SceneNode,
   styles: TextStyleMap,
 ): Promise<void> {
   await applyTextStyleToNode(root, styles);
+  if (root.type === "INSTANCE") return;
   const children = (root as unknown as { children?: SceneNode[] }).children;
   if (children) {
     for (const child of children) await applyTextStyles(child, styles);
   }
 }
 
-// Sweep a region's top-level section/block nodes one at a time, yielding to the
-// UI after each so a long sweep never blocks the event loop. `onChunk` reports
-// the boundary (1-based count, total) so the caller can drive a progress bar.
+// How many text nodes a sweep applies between UI yields. Small enough that the
+// progress bar keeps moving through multi-thousand-node regions, large enough
+// that the macrotask hop cost stays negligible.
+const TEXT_STYLE_CHUNK = 40;
+
+type StyleTarget = { node: SceneNode; styleId: string };
+
+// Flatten a region's eligible text nodes up front (cheap sync reads only), so
+// the application pass can report honest done/total progress per small chunk
+// instead of one opaque step per top-level section frame.
+function collectStyleTargets(
+  nodes: SceneNode[],
+  styles: TextStyleMap,
+): StyleTarget[] {
+  const targets: StyleTarget[] = [];
+  const visit = (node: SceneNode): void => {
+    if (node.type === "TEXT") {
+      const styleId = textStyleTarget(node, styles);
+      if (styleId !== undefined) targets.push({ node, styleId });
+      return;
+    }
+    if (node.type === "INSTANCE") return;
+    const children = (node as unknown as { children?: SceneNode[] }).children;
+    if (children) {
+      for (const child of children) visit(child);
+    }
+  };
+  for (const node of nodes) visit(node);
+  return targets;
+}
+
+// Apply the matching text style to every eligible text node under `nodes`,
+// yielding to the UI every chunk so a long sweep never blocks the event loop
+// and posted progress messages actually flush. `onChunk` reports the boundary
+// (1-based count, total) so the caller can drive a progress bar.
 export async function applyTextStylesChunked(
   nodes: SceneNode[],
   styles: TextStyleMap,
   onChunk?: (done: number, total: number) => void,
 ): Promise<void> {
-  const total = nodes.length;
+  const targets = collectStyleTargets(nodes, styles);
+  const total = targets.length;
   onChunk?.(0, total);
   for (let i = 0; i < total; i++) {
-    await applyTextStyles(nodes[i]!, styles);
-    onChunk?.(i + 1, total);
-    await yieldToUi();
+    const target = targets[i]!;
+    await setTextStyleId(target.node, target.styleId);
+    if ((i + 1) % TEXT_STYLE_CHUNK === 0 || i + 1 === total) {
+      onChunk?.(i + 1, total);
+      await yieldToUi();
+    }
   }
 }

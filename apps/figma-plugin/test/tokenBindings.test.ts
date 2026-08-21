@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { applyTokenBindings } from "../src/tokenBindings";
+import {
+  applyTokenBindings,
+  applyTokenBindingsChunked,
+} from "../src/tokenBindings";
 import type { FigmaMock } from "./figma-mock";
 
 function liveFigma(): FigmaMock {
@@ -321,5 +324,70 @@ describe("applyTokenBindings", () => {
 
     const effect = (frame.effects as Array<Record<string, unknown>>)[0]!;
     expect(effect.boundVariables).toBeUndefined();
+  });
+
+  it("binds an instance root's own fields but skips its locked subtree", () => {
+    const figma = liveFigma();
+    const primitives = makePrimitives();
+
+    // A component with one child; instancing it yields a cloned subtree.
+    const component = figma.createComponent();
+    const inner = figma.createFrame();
+    component.appendChild(inner);
+
+    const instance = component.createInstance() as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(instance.type).toBe("INSTANCE");
+    // Instance-root overrides are legal in Figma; children stay locked to the
+    // source component (writes throw). Set both so each path is exercised.
+    instance.cornerRadius = 8;
+    const clonedInner = instance.children[0] as unknown as Record<
+      string,
+      unknown
+    >;
+    clonedInner.layoutMode = "VERTICAL";
+    clonedInner.paddingTop = 8;
+
+    applyTokenBindings(instance as never, primitives);
+
+    // The instance root's own override binds.
+    expect(boundId(instance, "topLeftRadius")).toBe(
+      primitives.get("radius/lg")!.id,
+    );
+    // The locked child is never written.
+    expect(boundId(clonedInner, "paddingTop")).toBeUndefined();
+  });
+
+  it("reports chunked progress over every walkable node and binds them", async () => {
+    const figma = liveFigma();
+    const primitives = makePrimitives();
+
+    const parent = figma.createFrame();
+    (parent as unknown as Record<string, unknown>).layoutMode = "VERTICAL";
+    (parent as unknown as Record<string, unknown>).itemSpacing = 16;
+    const child = figma.createFrame();
+    (child as unknown as Record<string, unknown>).strokeWeight = 1;
+    parent.appendChild(child);
+
+    const events: { current: number; total: number }[] = [];
+    await applyTokenBindingsChunked(
+      [parent as never],
+      primitives,
+      (done, total) => events.push({ current: done, total }),
+    );
+
+    // Progress starts at the boundary and ends at the full walkable count
+    // (parent + child).
+    expect(events[0]).toEqual({ current: 0, total: 2 });
+    expect(events.at(-1)).toEqual({ current: 2, total: 2 });
+    // Both nodes actually bound.
+    expect(boundId(parent, "itemSpacing")).toBe(
+      primitives.get("spacing/4")!.id,
+    );
+    expect(boundId(child, "strokeWeight")).toBe(
+      primitives.get("border-width/1")!.id,
+    );
   });
 });

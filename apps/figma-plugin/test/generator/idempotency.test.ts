@@ -11,6 +11,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { generateFromRegistry } from "../../src/generator";
 import { resolvePreset } from "../../src/registry";
+import { resetLoadedFontsCache } from "../../src/fonts";
 import type { FigmaMock } from "../figma-mock";
 import { countState, snapshotCollections } from "../helpers/snapshot";
 
@@ -91,8 +92,11 @@ describe("generation idempotency", () => {
     const previousFamily = first.fonts.body;
 
     const figma = liveFigma();
-    // Reset the recorded font loads so we only inspect the second run's calls.
+    // Reset the recorded font loads so we only inspect the second run's calls,
+    // and clear the session font cache so the run can't lean on faces the
+    // first run already loaded — this pass must request both families itself.
     figma.loadFontAsync.mock.calls.length = 0;
+    resetLoadedFontsCache();
 
     const second = await generate("bIkeymG", "inter");
     const newFamily = second.fonts.body;

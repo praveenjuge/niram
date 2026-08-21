@@ -85,7 +85,7 @@ import { applyDocsToSections } from "./docs";
 import { ensureEffectStyles } from "../effectStyles";
 import { ensureTextStyles, applyTextStylesChunked } from "../textStyles";
 import { applyTokenBindingsChunked } from "../tokenBindings";
-import { yieldToUi } from "../async";
+import { loadAllPagesOnce, yieldToUi } from "../async";
 
 export type { ComponentsInputs, ComponentsResult } from "./types";
 
@@ -189,7 +189,9 @@ const ORDERED_SECTIONS: SectionBuilder[] = [
 export async function buildComponentsPage(
   inputs: ComponentsInputs,
 ): Promise<ComponentsResult> {
-  await figma.loadAllPagesAsync();
+  // Memoized per generate run — the Design System builder (or the orchestrator)
+  // has usually already loaded the pages, making this a no-op await.
+  await loadAllPagesOnce();
 
   // Find the shared Niram page. The Design System builder normally creates it
   // first; when this builder runs in isolation (tests, standalone callers) we

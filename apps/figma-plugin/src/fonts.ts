@@ -54,6 +54,43 @@ function styleKey(family: string, style: string): string {
   return family + "\u0000" + style;
 }
 
+// Session-level memo of faces a previous load already confirmed. The generate
+// flow used to run five separate font passes per run (theme validation, text
+// styles, then one per region builder), each re-attempting every family ×
+// weight through the host. Faces don't unload mid-session, so a confirmed pair
+// is skipped on every later pass and simply folded into the returned set.
+const loadedFaces = new Set<string>();
+
+// Memoized `listAvailableFontsAsync`. The host-wide enumeration is one of the
+// slower plugin calls and its result doesn't change while the plugin is open,
+// so one promise serves every pass in the session.
+let availableFonts: Promise<Array<{ fontName: FontName }>> | null = null;
+
+function listAvailableFontsOnce(): Promise<Array<{ fontName: FontName }>> {
+  if (!availableFonts) {
+    const lister = (
+      figma as unknown as {
+        listAvailableFontsAsync?: () => Promise<Array<{ fontName: FontName }>>;
+      }
+    ).listAvailableFontsAsync;
+    if (typeof lister !== "function") {
+      // Host can't enumerate (older hosts / the test mock) — cache an empty
+      // list so callers fall back to the fixed weight list without retrying.
+      availableFonts = Promise.resolve([]);
+      return availableFonts;
+    }
+    availableFonts = lister.call(figma).catch(() => []);
+  }
+  return availableFonts;
+}
+
+// Test/session hook: forget every cached face and the font enumeration so a
+// fresh mock (or a freshly reloaded plugin) starts clean.
+export function resetLoadedFontsCache(): void {
+  loadedFaces.clear();
+  availableFonts = null;
+}
+
 // Maps a numeric font weight (100–900) to the Figma/Inter named style. Lives
 // here (alongside the rest of the font handling) so both the page builders and
 // the text-style generator can share one source of truth. `designSystem/utils`
@@ -133,7 +170,21 @@ export async function loadFontFamilies(
     if (family && unique.indexOf(family) === -1) unique.push(family);
   }
 
-  const stylesByFamily = await availableStylesByFamily(unique);
+  const available = await listAvailableFontsOnce();
+  const wanted = new Set(unique);
+  const stylesByFamily = new Map<string, string[]>();
+  for (const entry of available) {
+    const family = entry.fontName.family;
+    if (!wanted.has(family)) continue;
+    const list = stylesByFamily.get(family);
+    if (list) {
+      if (list.indexOf(entry.fontName.style) === -1) {
+        list.push(entry.fontName.style);
+      }
+    } else {
+      stylesByFamily.set(family, [entry.fontName.style]);
+    }
+  }
 
   const attempts: Promise<void>[] = [];
   for (const family of unique) {
@@ -143,10 +194,18 @@ export async function loadFontFamilies(
       if (styleList.indexOf(style) === -1) styleList.push(style);
     }
     for (const style of styleList) {
+      const key = styleKey(family, style);
+      // A face confirmed in an earlier pass is already loaded in the host —
+      // skip the round trip and carry it into this call's result.
+      if (loadedFaces.has(key)) {
+        loaded.add(key);
+        continue;
+      }
       attempts.push(
         figma.loadFontAsync({ family, style }).then(
           function () {
-            loaded.add(styleKey(family, style));
+            loadedFaces.add(key);
+            loaded.add(key);
           },
           function () {
             // Family/weight unavailable on this host — skip; pickFont falls back.
@@ -157,44 +216,6 @@ export async function loadFontFamilies(
   }
   await Promise.all(attempts);
   return loaded;
-}
-
-// Map each requested family to the exact style names installed on this host,
-// via `figma.listAvailableFontsAsync`. Returns an empty map when the host can't
-// enumerate fonts (older hosts / the test mock) so callers fall back to the
-// fixed weight list.
-async function availableStylesByFamily(
-  families: string[],
-): Promise<Map<string, string[]>> {
-  const map = new Map<string, string[]>();
-  const lister = (
-    figma as unknown as {
-      listAvailableFontsAsync?: () => Promise<Array<{ fontName: FontName }>>;
-    }
-  ).listAvailableFontsAsync;
-  if (typeof lister !== "function") return map;
-
-  let available: Array<{ fontName: FontName }>;
-  try {
-    available = await lister.call(figma);
-  } catch {
-    return map;
-  }
-
-  const wanted = new Set(families);
-  for (const entry of available) {
-    const family = entry.fontName.family;
-    if (!wanted.has(family)) continue;
-    const list = map.get(family);
-    if (list) {
-      if (list.indexOf(entry.fontName.style) === -1) {
-        list.push(entry.fontName.style);
-      }
-    } else {
-      map.set(family, [entry.fontName.style]);
-    }
-  }
-  return map;
 }
 
 // Load the preset fonts (plus the Inter fallback) across all weights and make

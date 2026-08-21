@@ -3,6 +3,7 @@ import { TAILWIND_COLORS } from "../../src/colors";
 import { ensureTailwindColorCollection } from "../../src/generator/tailwindColors";
 import { ensureThemeCollection } from "../../src/generator/theme";
 import type { ResolvedRegistry } from "../../src/generator/types";
+import { resetLoadedFontsCache } from "../../src/fonts";
 
 type AnyVar = { id: string; valuesByMode: Record<string, unknown> };
 type Alias = { type: "VARIABLE_ALIAS"; id: string };
@@ -240,6 +241,9 @@ describe("ensureThemeCollection", () => {
       fontHeading: "inherit",
     } as ResolvedRegistry["config"];
     try {
+      // Forget the faces the first pass loaded so this pass must request them
+      // itself — mirroring the fresh-session guarantee the regression guards.
+      resetLoadedFontsCache();
       await expect(
         ensureThemeCollection(secondRegistry, tw),
       ).resolves.toBeDefined();

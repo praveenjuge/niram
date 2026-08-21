@@ -69,38 +69,119 @@ function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, value));
 }
 
-// Turn the Generate button into the progress indicator: a determinate fill
-// when a percent is known, otherwise an indeterminate sliding stripe.
-function setButtonProgress(percent: number | undefined, label: string) {
-  generateButton.classList.add("working");
-  generateLabel.textContent = label;
-  if (typeof percent === "number") {
+// Progress rendering for the Generate button. The sandbox only hears back from
+// the host at async boundaries, so messages can arrive in bursts with gaps;
+// the UI keeps the bar alive between them by easing the fill toward the last
+// reported percent, creeping forward when updates stall, and ticking the
+// elapsed time so it never looks frozen.
+const TICK_MS = 250;
+// After this long without a message, nudge the target forward so the bar
+// keeps moving (capped below 100% — only `done` completes the run).
+const STALL_MS = 2000;
+const CREEP_STEP = 0.4;
+// Fraction of the remaining gap the fill covers per tick.
+const EASE_FACTOR = 0.3;
+
+let workTimer: number | null = null;
+let currentDetail = "Working…";
+let targetPercent: number | null = null; // null → indeterminate stripe
+let displayPercent = 0;
+let lastElapsedMs = 0;
+let lastMessageAt = 0;
+
+function composeLabel(): string {
+  const parts: string[] = [currentDetail];
+  if (targetPercent !== null) {
+    parts.push(`${Math.round(displayPercent)}%`);
+  }
+  const seconds = Math.floor(lastElapsedMs / 1000);
+  if (seconds > 0) parts.push(`${seconds}s`);
+  return parts.join(" · ");
+}
+
+function renderProgress() {
+  generateLabel.textContent = composeLabel();
+  if (targetPercent !== null) {
     generateButton.classList.remove("indeterminate");
-    generateFill.style.width = `${clampPercent(percent)}%`;
+    generateFill.style.width = `${clampPercent(displayPercent)}%`;
   } else {
     generateButton.classList.add("indeterminate");
     generateFill.style.width = "";
   }
 }
 
+function tickProgress() {
+  if (targetPercent !== null) {
+    if (
+      Date.now() - lastMessageAt > STALL_MS &&
+      targetPercent < 99
+    ) {
+      targetPercent = Math.min(99, targetPercent + CREEP_STEP);
+    }
+    const gap = targetPercent - displayPercent;
+    displayPercent =
+      Math.abs(gap) < 0.05 ? targetPercent : displayPercent + gap * EASE_FACTOR;
+  }
+  renderProgress();
+}
+
+// Turn the Generate button into the progress indicator and start the local
+// ticker that animates it between sandbox messages.
+function startWorkVisuals(label: string) {
+  generateButton.classList.add("working");
+  currentDetail = label;
+  targetPercent = null;
+  displayPercent = 0;
+  lastElapsedMs = 0;
+  lastMessageAt = Date.now();
+  renderProgress();
+  if (workTimer === null) {
+    workTimer = window.setInterval(tickProgress, TICK_MS);
+  }
+}
+
+// Turn the Generate button into the progress indicator: a determinate fill
+// once a percent is known, otherwise an indeterminate sliding stripe.
+function setButtonProgress(percent: number | undefined, label: string) {
+  generateButton.classList.add("working");
+  currentDetail = label;
+  if (typeof percent === "number") {
+    const next = clampPercent(percent);
+    // Never lower the target: stall creep may have eased it past a late
+    // message's reading, and a backwards fill reads as a restart.
+    targetPercent =
+      targetPercent === null ? next : Math.max(targetPercent, next);
+  }
+  lastMessageAt = Date.now();
+  renderProgress();
+}
+
 // Drive the button from a progress message: keep the percent in the label and
 // the fill width; fall back to the detail/message text when no percent yet.
 function updateProgress(message: Extract<PluginToUi, { type: "progress" }>) {
-  const detail = message.detail ?? message.message;
-  const label =
-    typeof message.percent === "number"
-      ? `${detail} · ${message.percent}%`
-      : detail;
-  setButtonProgress(message.percent, label);
+  if (typeof message.elapsedMs === "number") {
+    lastElapsedMs = message.elapsedMs;
+  }
+  setButtonProgress(message.percent, message.detail ?? message.message);
 }
 
 function startProgress() {
   setStatus("");
-  setButtonProgress(undefined, "Working…");
+  startWorkVisuals("Working…");
+}
+
+function stopWorkTimer() {
+  if (workTimer !== null) {
+    window.clearInterval(workTimer);
+    workTimer = null;
+  }
 }
 
 function finishProgress() {
+  stopWorkTimer();
   generateButton.classList.remove("indeterminate");
+  targetPercent = 100;
+  displayPercent = 100;
   generateFill.style.width = "100%";
   setTimeout(() => {
     resetProgress();
@@ -108,6 +189,7 @@ function finishProgress() {
 }
 
 function resetProgress() {
+  stopWorkTimer();
   generateButton.classList.remove("working", "indeterminate");
   generateFill.style.width = "0%";
   generateLabel.textContent = "Generate";

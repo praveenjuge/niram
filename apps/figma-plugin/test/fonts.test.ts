@@ -4,6 +4,7 @@ import {
   loadFontFamilies,
   loadPresetFonts,
   resetActiveFonts,
+  resetLoadedFontsCache,
   setActiveFonts,
   type FontContext,
 } from "../src/fonts";
@@ -98,6 +99,31 @@ describe("loadFontFamilies", () => {
     } finally {
       delete figmaAny.listAvailableFontsAsync;
     }
+  });
+
+  it("skips re-requesting faces a previous pass already loaded", async () => {
+    resetLoadedFontsCache();
+    await loadFontFamilies(["Geist"]);
+    const afterFirst = loadCalls().length;
+    expect(afterFirst).toBeGreaterThan(0);
+
+    // Second pass over the same family: every face is confirmed loaded in the
+    // session, so no new loadFontAsync round trips are issued — but the
+    // returned set still reports the faces as loaded.
+    const loaded = await loadFontFamilies(["Geist"]);
+    expect(loadCalls().length).toBe(afterFirst);
+    expect(loaded.has("Geist\u0000Regular")).toBe(true);
+    expect(loaded.has("Geist\u0000Bold")).toBe(true);
+  });
+
+  it("re-attempts faces after the cache is reset", async () => {
+    resetLoadedFontsCache();
+    await loadFontFamilies(["Geist"]);
+    const afterFirst = loadCalls().length;
+
+    resetLoadedFontsCache();
+    await loadFontFamilies(["Geist"]);
+    expect(loadCalls().length).toBeGreaterThan(afterFirst);
   });
 });
 

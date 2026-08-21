@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyTextStyles,
+  applyTextStylesChunked,
   ensureTextStyles,
   textStyleName,
 } from "../src/textStyles";
@@ -325,6 +326,134 @@ describe("applyTextStyles", () => {
     await applyTextStyles(heading as never, map);
     expect(
       (heading as unknown as { textStyleId?: string }).textStyleId,
+    ).toBeUndefined();
+  });
+
+  it("skips the host call when the node already carries the target style", async () => {
+    const figma = liveFigma();
+    const map = await ensureTextStyles(await primitives());
+
+    const text = figma.createText();
+    (text as unknown as { fontSize: number }).fontSize = 14;
+    (text as unknown as { fontName: unknown }).fontName = {
+      family: "Inter",
+      style: "Regular",
+    };
+    const targetId = map.idFor("text-sm/normal")!;
+    (text as unknown as { textStyleId?: string }).textStyleId = targetId;
+
+    let setterCalls = 0;
+    (
+      text as unknown as { setTextStyleIdAsync: (id: string) => Promise<void> }
+    ).setTextStyleIdAsync = (id: string) => {
+      setterCalls += 1;
+      return Promise.resolve();
+    };
+
+    await applyTextStyles(text as never, map);
+    expect(setterCalls).toBe(0);
+    expect(
+      (text as unknown as { textStyleId?: string }).textStyleId,
+    ).toBe(targetId);
+  });
+
+  it("re-styles a node carrying a stale style id", async () => {
+    const figma = liveFigma();
+    const map = await ensureTextStyles(await primitives());
+
+    const text = figma.createText();
+    (text as unknown as { fontSize: number }).fontSize = 14;
+    (text as unknown as { fontName: unknown }).fontName = {
+      family: "Inter",
+      style: "Regular",
+    };
+    (text as unknown as { textStyleId?: string }).textStyleId = "style-stale";
+
+    await applyTextStyles(text as never, map);
+    expect(
+      (text as unknown as { textStyleId?: string }).textStyleId,
+    ).toBe(map.idFor("text-sm/normal"));
+  });
+
+  it("does not descend into instance subtrees", async () => {
+    const figma = liveFigma();
+    const map = await ensureTextStyles(await primitives());
+
+    // A component holding eligible text; instancing clones it.
+    const component = figma.createComponent();
+    const sourceText = figma.createText();
+    (sourceText as unknown as { fontSize: number }).fontSize = 16;
+    (sourceText as unknown as { fontName: unknown }).fontName = {
+      family: "Inter",
+      style: "Bold",
+    };
+    component.appendChild(sourceText);
+
+    const instance = component.createInstance() as unknown as Record<
+      string,
+      unknown
+    >;
+    const clonedText = instance.children[0] as unknown as Record<
+      string,
+      unknown
+    >;
+    clonedText.fontSize = 16;
+    clonedText.fontName = { family: "Inter", style: "Bold" };
+
+    let setterCalls = 0;
+    Object.defineProperty(clonedText, "setTextStyleIdAsync", {
+      value: () => {
+        setterCalls += 1;
+        return Promise.resolve();
+      },
+    });
+
+    await applyTextStyles(instance as never, map);
+    // The instance root itself is attempted (harmless), but its locked child
+    // must not receive a doomed host call.
+    expect(setterCalls).toBe(0);
+    expect(clonedText.textStyleId).toBeUndefined();
+  });
+});
+
+describe("applyTextStylesChunked", () => {
+  it("reports progress over eligible text nodes only and styles them", async () => {
+    const figma = liveFigma();
+    const map = await ensureTextStyles(await primitives());
+
+    const frame = figma.createFrame();
+    const onScale = figma.createText();
+    (onScale as unknown as { fontSize: number }).fontSize = 14;
+    (onScale as unknown as { fontName: unknown }).fontName = {
+      family: "Inter",
+      style: "Regular",
+    };
+    const offScale = figma.createText();
+    (offScale as unknown as { fontSize: number }).fontSize = 13; // no token
+    (offScale as unknown as { fontName: unknown }).fontName = {
+      family: "Inter",
+      style: "Regular",
+    };
+    const plainFrame = figma.createFrame();
+    frame.appendChild(onScale as never);
+    frame.appendChild(offScale as never);
+    frame.appendChild(plainFrame as never);
+
+    const events: { current: number; total: number }[] = [];
+    await applyTextStylesChunked(
+      [frame as never],
+      map,
+      (done, total) => events.push({ current: done, total }),
+    );
+
+    // Only the one on-scale text node counts toward progress.
+    expect(events[0]).toEqual({ current: 0, total: 1 });
+    expect(events.at(-1)).toEqual({ current: 1, total: 1 });
+    expect((onScale as unknown as { textStyleId?: string }).textStyleId).toBe(
+      map.idFor("text-sm/normal"),
+    );
+    expect(
+      (offScale as unknown as { textStyleId?: string }).textStyleId,
     ).toBeUndefined();
   });
 });

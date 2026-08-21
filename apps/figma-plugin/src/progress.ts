@@ -119,6 +119,12 @@ function describe(
   }
 }
 
+// Measured per-segment durations (ms) from a previous run, keyed by
+// `segmentKey`. The reporter records them as it runs; code.ts persists them in
+// plugin data so the *next* run's bar tracks real time instead of the static
+// guesses in PLAN.
+export type ProgressCalibration = Record<string, number>;
+
 export type ProgressUpdate = {
   phase: ProgressPhase;
   region?: ProgressRegion;
@@ -132,6 +138,11 @@ export type ProgressReporterOptions = {
   emit: (update: ProgressUpdate) => void;
   // Injectable clock so tests get a deterministic elapsed time.
   now?: () => number;
+  // Per-segment durations recorded by a previous run. When present, segment
+  // weights are derived from real time (unmeasured segments scale by the
+  // measured ms-per-weight ratio) so the percent advances proportionally to
+  // actual work rather than the static plan.
+  calibration?: ProgressCalibration;
 };
 
 // Tracks weighted progress across the whole generate flow and emits monotonic,
@@ -141,8 +152,14 @@ export class ProgressReporter {
   private readonly now: () => number;
   private readonly startedAt: number;
   private readonly indexByKey = new Map<string, number>();
+  private readonly weights: number[] = [];
   private readonly prefix: number[] = [];
   private readonly total: number;
+
+  // Durations recorded while this run executes (ms per segment key).
+  private readonly measured: ProgressCalibration = {};
+  // Clock reading at which the currently open segment became active.
+  private segmentStartedAt: number | null = null;
 
   private index = -1;
   private lastPercent = 0;
@@ -152,12 +169,14 @@ export class ProgressReporter {
     this.now = options.now ?? (() => Date.now());
     this.startedAt = this.now();
 
+    const effective = effectiveWeights(options.calibration);
     let running = 0;
     for (let i = 0; i < PLAN.length; i++) {
       const segment = PLAN[i]!;
       this.indexByKey.set(segmentKey(segment.phase, segment.region), i);
+      this.weights[i] = effective[i]!;
       this.prefix[i] = running;
-      running += segment.weight;
+      running += this.weights[i]!;
     }
     // Avoid divide-by-zero; the plan always carries weight in practice.
     this.total = running > 0 ? running : 1;
@@ -176,11 +195,17 @@ export class ProgressReporter {
     if (idx === undefined) return;
     // Never walk backwards: a late event from an earlier phase can't lower the
     // bar or rewind the active segment.
-    if (idx >= this.index) this.index = idx;
+    if (idx >= this.index) {
+      const timestamp = this.now();
+      this.closeSegment(timestamp);
+      this.index = idx;
+      this.segmentStartedAt = timestamp;
+    }
     const activeIdx = this.index;
     const segment = PLAN[activeIdx]!;
     const fraction = total > 0 ? Math.min(1, Math.max(0, current / total)) : 0;
-    const weightSoFar = this.prefix[activeIdx]! + fraction * segment.weight;
+    const weightSoFar =
+      this.prefix[activeIdx]! + fraction * this.weights[activeIdx]!;
 
     let percent = Math.round((weightSoFar / this.total) * 100);
     // Reserve 100% for the terminal `done` so the bar never reads complete
@@ -213,6 +238,8 @@ export class ProgressReporter {
 
   // Terminal update: forces the bar to 100%.
   finish(): void {
+    this.closeSegment(this.now());
+    this.segmentStartedAt = null;
     this.index = PLAN.length - 1;
     this.lastPercent = 100;
     this.emit({
@@ -227,4 +254,58 @@ export class ProgressReporter {
   elapsed(): number {
     return this.now() - this.startedAt;
   }
+
+  // Per-segment durations recorded during this run. code.ts persists them so
+  // the next run can calibrate its weights against real time.
+  measurements(): ProgressCalibration {
+    const copy: ProgressCalibration = {};
+    for (const key of Object.keys(this.measured)) {
+      copy[key] = this.measured[key]!;
+    }
+    return copy;
+  }
+
+  // Fold the currently open segment's elapsed time into `measured`.
+  private closeSegment(timestamp: number): void {
+    if (this.segmentStartedAt === null || this.index < 0) return;
+    const segment = PLAN[this.index]!;
+    if (segment.weight <= 0) return;
+    const key = segmentKey(segment.phase, segment.region);
+    const duration = timestamp - this.segmentStartedAt;
+    this.measured[key] = (this.measured[key] ?? 0) + duration;
+  }
+}
+
+// Blend the static plan with measured durations from a previous run. Measured
+// segments use their real ms; unmeasured segments scale by the measured
+// ms-per-static-weight ratio so a partially-calibrated scope still produces
+// proportional weights. With no usable data the static plan passes through.
+function effectiveWeights(
+  calibration: ProgressCalibration | undefined,
+): number[] {
+  const staticWeights = PLAN.map((segment) => segment.weight);
+
+  let measuredMs = 0;
+  let measuredStaticWeight = 0;
+  if (calibration) {
+    for (let i = 0; i < PLAN.length; i++) {
+      const segment = PLAN[i]!;
+      if (segment.weight <= 0) continue;
+      const value = calibration[segmentKey(segment.phase, segment.region)];
+      if (typeof value !== "number" || !(value > 0)) continue;
+      measuredMs += value;
+      measuredStaticWeight += segment.weight;
+    }
+  }
+  if (measuredMs <= 0 || measuredStaticWeight <= 0) return staticWeights;
+
+  const ratio = measuredMs / measuredStaticWeight;
+  return staticWeights.map((weight, i) => {
+    const segment = PLAN[i]!;
+    if (segment.weight <= 0) return weight;
+    const value =
+      calibration![segmentKey(segment.phase, segment.region)] ?? undefined;
+    if (typeof value === "number" && value > 0) return Math.max(1, value);
+    return Math.max(1, Math.round(weight * ratio));
+  });
 }

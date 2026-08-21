@@ -21,6 +21,15 @@ g.figma = figma;
 // ignores it, but the reference must resolve under QuickJS.
 g.__html__ = "<html></html>";
 
+// The sandbox yields to the UI with `setTimeout(fn, 0)` (src/async.ts). Figma's
+// sandbox provides a real timer; QuickJS does not, so bridge it onto the VM's
+// microtask queue — one tick of deferment is enough for the harness, whose
+// drainJobs loop pumps pending jobs until the drive promise settles.
+g.setTimeout = function (fn: () => void): number {
+  void Promise.resolve().then(fn);
+  return 0;
+};
+
 g.__niramDrive = async function drive(presetCode: string): Promise<string> {
   const handler = (figma.ui as { onmessage: Handler | null }).onmessage;
   if (typeof handler !== "function") {

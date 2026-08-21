@@ -244,8 +244,10 @@
         width: 0%;
         background: var(--accent);
         opacity: 0;
+        /* Linear glide between the progress ticks the sandbox sends, so the
+           fill moves continuously instead of jumping between updates. */
         transition:
-          width 200ms ease,
+          width 300ms linear,
           opacity 120ms ease;
         pointer-events: none;
       }

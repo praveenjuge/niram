@@ -32,7 +32,7 @@ import { ensureEffectStyles } from "../effectStyles";
 import { ensureTextStyles, applyTextStylesChunked } from "../textStyles";
 import { applyTokenBindingsChunked } from "../tokenBindings";
 import { collectIconComponents } from "../icons";
-import { yieldToUi } from "../async";
+import { loadAllPagesOnce, yieldToUi } from "../async";
 
 export type { DesignSystemInputs, DesignSystemResult } from "./types";
 
@@ -65,8 +65,9 @@ export async function buildDesignSystem(
   inputs: DesignSystemInputs,
 ): Promise<DesignSystemResult> {
   // The "dynamic-page" manifest setting requires us to load all pages before
-  // we can search for an existing page by name.
-  await figma.loadAllPagesAsync();
+  // we can search for an existing page by name. Memoized per generate run —
+  // the orchestrator and the other region builders share the same promise.
+  await loadAllPagesOnce();
 
   // Reset (or create) the shared Niram page. The Design System builder runs
   // first and owns page creation; on a re-run it clears only the section frames
@@ -107,6 +108,10 @@ export async function buildDesignSystem(
 
   const total = SECTIONS.length;
   let count = 0;
+  // The Icons section's top-level frame, captured as it is appended so the
+  // icon-component lookup below can scan just that subtree instead of the
+  // whole (multi-thousand-node) page.
+  let iconsSectionFrame: SceneNode | undefined;
 
   // Remember which top-level frames already existed (other regions) so we tag,
   // sweep, and lay out only the section frames this run appends.
@@ -121,6 +126,10 @@ export async function buildDesignSystem(
       label: section.label,
     });
     count += await section.build(page, inputsWithStyles);
+    if (section.label === "Icons") {
+      const children = page.children as SceneNode[];
+      iconsSectionFrame = children[children.length - 1];
+    }
     // Yield to the event loop so the UI can paint between sections.
     await yieldToUi();
   }
@@ -180,7 +189,15 @@ export async function buildDesignSystem(
 
   // Collect the icon showcase's components so the Components page can embed
   // instances of them (swappable icons that stay in sync with the set).
-  const iconComponents = collectIconComponents(page as unknown as SceneNode);
+  // Scanning just the Icons section's frame keeps this off the full-page walk;
+  // fall back to one when the scoped scan comes up empty (e.g. a future
+  // section layout that appends more than its own frame).
+  let iconComponents = iconsSectionFrame
+    ? collectIconComponents(iconsSectionFrame)
+    : new Map<string, ComponentNode>();
+  if (iconComponents.size === 0) {
+    iconComponents = collectIconComponents(page as unknown as SceneNode);
+  }
 
   return { nodeCount: count, iconComponents };
 }

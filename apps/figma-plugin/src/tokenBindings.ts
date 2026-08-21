@@ -121,10 +121,18 @@ function pixelField(node: SceneNode, field: string): number | undefined {
   return undefined;
 }
 
-function isBound(node: SceneNode, field: string): boolean {
-  const bound = (
-    node as unknown as { boundVariables?: Record<string, unknown> }
-  ).boundVariables;
+// A per-node snapshot of `boundVariables`. Reading the object once per node
+// (one host round trip) instead of once per field keeps the sweep's host
+// traffic proportional to node count rather than field count; nothing re-binds
+// a field within a single node, so the snapshot can't go stale mid-node.
+type BoundSnapshot = Record<string, unknown> | undefined;
+
+function readBoundVariables(node: SceneNode): BoundSnapshot {
+  return (node as unknown as { boundVariables?: Record<string, unknown> })
+    .boundVariables;
+}
+
+function isBound(bound: BoundSnapshot, field: string): boolean {
   return Boolean(bound && bound[field]);
 }
 
@@ -147,9 +155,10 @@ function bindFromSources(
   value: number | undefined,
   sources: TokenSource[],
   primitives: VarMap,
+  bound: BoundSnapshot,
 ): void {
   if (value === undefined || value <= 0) return;
-  if (isBound(node, field)) return;
+  if (isBound(bound, field)) return;
   for (const source of sources) {
     const name = source.lookup.get(value);
     if (name === undefined) continue;
@@ -167,8 +176,16 @@ function bindField(
   lookup: Map<number, string>,
   group: string,
   primitives: VarMap,
+  bound: BoundSnapshot,
 ): void {
-  bindFromSources(node, field, value, [{ lookup, group }], primitives);
+  bindFromSources(
+    node,
+    field,
+    value,
+    [{ lookup, group }],
+    primitives,
+    bound,
+  );
 }
 
 function hasAutoLayout(node: SceneNode): boolean {
@@ -227,6 +244,9 @@ function bindEffectRadii(node: SceneNode, primitives: VarMap): void {
 }
 
 function bindNode(node: SceneNode, primitives: VarMap): void {
+  // One host read for every "already bound?" check below.
+  const bound = readBoundVariables(node);
+
   // Spacing + padding only resolve on auto-layout frames/components/sets.
   if (hasAutoLayout(node)) {
     for (const field of SPACING_FIELDS) {
@@ -237,6 +257,7 @@ function bindNode(node: SceneNode, primitives: VarMap): void {
         SPACING_BY_VALUE,
         "spacing",
         primitives,
+        bound,
       );
     }
   }
@@ -250,6 +271,7 @@ function bindNode(node: SceneNode, primitives: VarMap): void {
       BORDER_WIDTH_BY_VALUE,
       "border-width",
       primitives,
+      bound,
     );
   }
 
@@ -260,7 +282,15 @@ function bindNode(node: SceneNode, primitives: VarMap): void {
   for (const field of RADIUS_FIELDS) {
     const value =
       uniformRadius !== undefined ? uniformRadius : numberField(node, field);
-    bindField(node, field, value, RADIUS_BY_VALUE, "radius", primitives);
+    bindField(
+      node,
+      field,
+      value,
+      RADIUS_BY_VALUE,
+      "radius",
+      primitives,
+      bound,
+    );
   }
 
   // Fixed width/height map onto the spacing scale (component-sized boxes) and
@@ -275,6 +305,7 @@ function bindNode(node: SceneNode, primitives: VarMap): void {
         numberField(node, "width"),
         DIMENSION_SOURCES,
         primitives,
+        bound,
       );
     }
     if (axisIsFixed(node, "height")) {
@@ -284,6 +315,7 @@ function bindNode(node: SceneNode, primitives: VarMap): void {
         numberField(node, "height"),
         DIMENSION_SOURCES,
         primitives,
+        bound,
       );
     }
   }
@@ -300,6 +332,7 @@ function bindNode(node: SceneNode, primitives: VarMap): void {
       OPACITY_BY_VALUE,
       "opacity",
       primitives,
+      bound,
     );
   }
 
@@ -324,6 +357,7 @@ function bindNode(node: SceneNode, primitives: VarMap): void {
         FONT_SIZE_BY_VALUE,
         "font/size",
         primitives,
+        bound,
       );
       bindField(
         node,
@@ -332,6 +366,7 @@ function bindNode(node: SceneNode, primitives: VarMap): void {
         LEADING_BY_VALUE,
         "font/leading",
         primitives,
+        bound,
       );
     }
     bindField(
@@ -341,32 +376,63 @@ function bindNode(node: SceneNode, primitives: VarMap): void {
       TRACKING_BY_VALUE,
       "font/tracking",
       primitives,
+      bound,
     );
   }
 }
 
 // Walk a node subtree, binding matching primitive variables on each node.
+// Instance subtrees are skipped: Figma locks instance children to the source
+// component, so every write beneath an instance root would throw (and be
+// swallowed) — descending there only burns host round trips. The instance
+// root itself still binds; its own overrides are legal.
 export function applyTokenBindings(root: SceneNode, primitives: VarMap): void {
   bindNode(root, primitives);
+  if (root.type === "INSTANCE") return;
   const children = (root as unknown as { children?: SceneNode[] }).children;
   if (children) {
     for (const child of children) applyTokenBindings(child, primitives);
   }
 }
 
-// Sweep a region's top-level section/block nodes one at a time, yielding to the
-// UI after each so a long binding pass never blocks the event loop. `onChunk`
-// reports the boundary (1-based count, total) so the caller can drive progress.
+// How many nodes a binding sweep processes between UI yields. Bindings are
+// cheap property writes, so this rides higher than the text-style chunk.
+const TOKEN_BINDING_CHUNK = 120;
+
+// Flatten a region's walkable nodes up front using the same traversal rules as
+// applyTokenBindings, so the sweep can report honest done/total progress per
+// small chunk instead of one opaque step per top-level section frame.
+function collectBindingNodes(nodes: SceneNode[]): SceneNode[] {
+  const out: SceneNode[] = [];
+  const visit = (node: SceneNode): void => {
+    out.push(node);
+    if (node.type === "INSTANCE") return;
+    const children = (node as unknown as { children?: SceneNode[] }).children;
+    if (children) {
+      for (const child of children) visit(child);
+    }
+  };
+  for (const node of nodes) visit(node);
+  return out;
+}
+
+// Sweep a region's top-level section/block nodes, binding matching primitive
+// variables and yielding to the UI every chunk so a long pass never blocks the
+// event loop and posted progress messages actually flush. `onChunk` reports
+// the boundary (1-based count, total) so the caller can drive progress.
 export async function applyTokenBindingsChunked(
   nodes: SceneNode[],
   primitives: VarMap,
   onChunk?: (done: number, total: number) => void,
 ): Promise<void> {
-  const total = nodes.length;
+  const flat = collectBindingNodes(nodes);
+  const total = flat.length;
   onChunk?.(0, total);
   for (let i = 0; i < total; i++) {
-    applyTokenBindings(nodes[i]!, primitives);
-    onChunk?.(i + 1, total);
-    await yieldToUi();
+    bindNode(flat[i]!, primitives);
+    if ((i + 1) % TOKEN_BINDING_CHUNK === 0 || i + 1 === total) {
+      onChunk?.(i + 1, total);
+      await yieldToUi();
+    }
   }
 }

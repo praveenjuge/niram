@@ -162,3 +162,143 @@ describe("ProgressReporter", () => {
     expect(updates.at(-1)!.percent).toBe(100);
   });
 });
+
+describe("ProgressReporter measurements", () => {
+  it("records per-segment durations across transitions and at finish", () => {
+    // Scripted clock. Each transition mark consumes two readings (the close/
+    // reopen timestamp and the emitted elapsed time); finish consumes two
+    // more (final close + terminal emit).
+    const reporter = new ProgressReporter({
+      emit: () => {},
+      now: scriptedClock([0, 100, 100, 250, 250, 400, 400]),
+    });
+    reporter.phase("resolving"); // open at 100
+    reporter.phase("variables"); // resolving closed: 250-100 = 150
+    reporter.finish(); // variables closed: 400-250 = 150
+
+    const measured = reporter.measurements();
+    expect(measured["resolving"]).toBe(150);
+    expect(measured["variables"]).toBe(150);
+  });
+
+  it("returns a copy, so callers can't mutate the internal record", () => {
+    const reporter = new ProgressReporter({
+      emit: () => {},
+      now: scriptedClock([0, 10, 10, 50, 50]),
+    });
+    reporter.phase("resolving");
+    reporter.finish();
+    const measured = reporter.measurements();
+    delete measured["resolving"];
+    expect(reporter.measurements()["resolving"]).toBeDefined();
+  });
+
+  it("accumulates fragmented marks within one segment", () => {
+    const reporter = new ProgressReporter({
+      emit: () => {},
+      now: fakeClock(25),
+    });
+    const track = reporter.region("components");
+    // Several marks inside the building segment; their durations must sum.
+    track({ phase: "building", current: 1, total: 4, label: "A" });
+    track({ phase: "building", current: 2, total: 4, label: "B" });
+    track({ phase: "building", current: 3, total: 4, label: "C" });
+    reporter.finish();
+
+    expect(reporter.measurements()["components:building"]).toBeGreaterThan(0);
+  });
+});
+
+describe("ProgressReporter calibration", () => {
+  function driveWith(
+    calibration?: Record<string, number>,
+  ): { updates: ProgressUpdate[]; percentAfterDsBuild: number } {
+    const updates: ProgressUpdate[] = [];
+    const reporter = new ProgressReporter({
+      emit: (u) => updates.push(u),
+      now: fakeClock(),
+      calibration,
+    });
+    reporter.phase("resolving");
+    reporter.phase("variables");
+    const track = reporter.region("design-system");
+    track({ phase: "clearing", current: 1, total: 1 });
+    track({ phase: "building", current: 4, total: 4 });
+    return { updates, percentAfterDsBuild: updates.at(-1)!.percent };
+  }
+
+  it("keeps static weights when no calibration data exists", () => {
+    // Entering resolving sits at 0%; entering variables lands just past
+    // resolving's 1-weight slice (≈1% of the static plan).
+    expect(driveWith().percentAfterDsBuild).toBeLessThanOrEqual(21);
+    // An empty record takes the same static path.
+    expect(driveWith({}).percentAfterDsBuild).toBe(
+      driveWith().percentAfterDsBuild,
+    );
+  });
+
+  it("reweights segments toward the measured durations", () => {
+    // Static plan: design-system's build (weight 8) finishing lands ~20%.
+    // Measuring it equal to Components' build (static 8 vs 30) must pull the
+    // same boundary well past that.
+    const staticRun = driveWith();
+    const calibratedRun = driveWith({
+      "design-system:building": 500,
+      "components:building": 500,
+    });
+    expect(staticRun.percentAfterDsBuild).toBeLessThanOrEqual(21);
+    expect(calibratedRun.percentAfterDsBuild).toBeGreaterThan(25);
+    expect(calibratedRun.percentAfterDsBuild).toBeGreaterThan(
+      staticRun.percentAfterDsBuild,
+    );
+  });
+
+  it("stays monotonic and reserves 100% under calibration", () => {
+    const updates: ProgressUpdate[] = [];
+    const reporter = new ProgressReporter({
+      emit: (u) => updates.push(u),
+      now: fakeClock(),
+      calibration: {
+        "components:building": 600,
+        "components:binding": 200,
+        "blocks:building": 300,
+      },
+    });
+    // Reuse the standard drive shape with the calibrated reporter.
+    reporter.phase("resolving");
+    reporter.phase("variables");
+    for (const region of [
+      "design-system",
+      "components",
+      "blocks",
+    ] as ProgressRegion[]) {
+      const track = reporter.region(region);
+      track({ phase: "clearing", current: 1, total: 1 });
+      track({ phase: "building", current: 0, total: 4, label: "Header" });
+      track({ phase: "building", current: 4, total: 4, label: "Done" });
+      track({ phase: "text-styles", current: 4, total: 4 });
+      track({ phase: "binding", current: 4, total: 4 });
+      track({ phase: "layout", current: 1, total: 1 });
+    }
+    reporter.finish();
+
+    let prev = -1;
+    for (const update of updates) {
+      expect(update.percent).toBeGreaterThanOrEqual(prev);
+      expect(update.percent).toBeLessThanOrEqual(100);
+      prev = update.percent;
+    }
+    expect(updates.filter((u) => u.percent === 100)).toHaveLength(1);
+  });
+});
+
+// A clock that hands out scripted readings, repeating the last one once
+// exhausted (so extra elapsed reads never crash a test).
+function scriptedClock(readings: number[]): () => number {
+  let i = 0;
+  return () => {
+    const reading = readings[Math.min(i, readings.length - 1)]!;
+    i += 1;
+    return reading;
+  };
+}

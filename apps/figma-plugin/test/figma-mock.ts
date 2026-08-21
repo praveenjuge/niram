@@ -634,7 +634,21 @@ export function createFigmaMock() {
     ui: { postMessage: createSpy(), onmessage: null as unknown },
     viewport: { scrollAndZoomIntoView: createSpy() },
 
-    root: { children: [] as FakeNode[] },
+    // Document-level plugin data store (figma.DocumentNode). The generate flow
+    // persists the progress reporter's per-phase durations here so the next
+    // run can calibrate its weighted bar against real time.
+    root: (() => {
+      const rootStore: Record<string, string> = {};
+      return {
+        children: [] as FakeNode[],
+        setPluginData(key: string, value: string) {
+          rootStore[key] = value;
+        },
+        getPluginData(key: string): string {
+          return key in rootStore ? rootStore[key]! : "";
+        },
+      };
+    })(),
     currentPage: null as FakeNode | null,
   };
 
