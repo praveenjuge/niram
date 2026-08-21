@@ -81,6 +81,7 @@ import {
   type SectionBuilder,
 } from "./types";
 import { loadComponentsFonts } from "./utils";
+import { setComponentChromeTheme } from "./layout";
 import { applyDocsToSections } from "./docs";
 import { ensureEffectStyles } from "../effectStyles";
 import { ensureTextStyles, applyTextStylesChunked } from "../textStyles";
@@ -189,6 +190,10 @@ const ORDERED_SECTIONS: SectionBuilder[] = [
 export async function buildComponentsPage(
   inputs: ComponentsInputs,
 ): Promise<ComponentsResult> {
+  // The shared set/card chrome (styleComponentSet, wrapInSectionCard) binds
+  // its surfaces to the theme variables from here on.
+  setComponentChromeTheme(inputs.theme);
+
   // Memoized per generate run — the Design System builder (or the orchestrator)
   // has usually already loaded the pages, making this a no-op await.
   await loadAllPagesOnce();

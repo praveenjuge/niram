@@ -1,7 +1,21 @@
 // Layout helpers shared by the Components page sections.
 
+import { bindFill, bindStrokeColor } from "./bindings";
 import { solidPaint } from "./paints";
 import { SECTION_WIDTH } from "./types";
+import type { ThemeVariableMaps } from "../generator";
+
+// Theme variables used for the shared section chrome (component-set cards,
+// wrap cards). The region builders inject this once before building so every
+// set/card surface BINDS to `card` / `border` instead of painting literal
+// whites — under the variable-modes theming strategy a literal fill would stay
+// light when the user flips the page to Dark. Left unset (e.g. focused unit
+// tests that build a single section), the helpers keep their literal fallback.
+let chromeTheme: ThemeVariableMaps | undefined;
+
+export function setComponentChromeTheme(theme: ThemeVariableMaps | undefined) {
+  chromeTheme = theme;
+}
 
 // Standardised wrapper styling used by every component-set frame on the
 // canvas (Button, Badge, Avatar, etc). Every set is pinned to the shared
@@ -10,6 +24,8 @@ import { SECTION_WIDTH } from "./types";
 export function styleComponentSet(componentSet: ComponentSetNode) {
   componentSet.strokes = [solidPaint(0.9)];
   componentSet.fills = [solidPaint(1)];
+  bindStrokeColor(componentSet, chromeTheme?.light.get("border"));
+  bindFill(componentSet, chromeTheme?.light.get("card"));
   componentSet.strokeWeight = 1;
   componentSet.paddingTop = 16;
   componentSet.paddingBottom = 16;
@@ -57,6 +73,8 @@ export function wrapInSectionCard(component: SceneNode): FrameNode {
   card.itemSpacing = 16;
   card.strokes = [solidPaint(0.9)];
   card.fills = [solidPaint(1)];
+  bindStrokeColor(card, chromeTheme?.light.get("border"));
+  bindFill(card, chromeTheme?.light.get("card"));
   card.strokeWeight = 1;
   card.paddingTop = 16;
   card.paddingBottom = 16;

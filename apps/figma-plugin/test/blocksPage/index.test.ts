@@ -71,6 +71,49 @@ describe("buildBlocksRegion", () => {
     expect(after - before).toBe(15);
   });
 
+  it("binds the region header and the Chart/Sidebar set chrome to theme variables", async () => {
+    // Regression: the Blocks info card and the Chart/Sidebar component sets
+    // painted literal whites, so under the variable-modes theming strategy
+    // they stayed light when the page flipped to Dark.
+    const inputs = await makeInputsOnComponentsPage();
+    await buildBlocksRegion(inputs);
+
+    const cardId = inputs.theme.light.get("card")!.id;
+    const borderId = inputs.theme.light.get("border")!.id;
+    const foregroundId = inputs.theme.light.get("foreground")!.id;
+
+    const boundFillId = (node: any): string | undefined =>
+      (node.fills?.[0]?.boundVariables?.color as any)?.id;
+    const boundStrokeId = (node: any): string | undefined =>
+      (node.strokes?.[0]?.boundVariables?.color as any)?.id;
+
+    const page = inputs.targetPage as unknown as { children: any[] };
+    const blocksFrames = page.children.filter(
+      (c) => c.getPluginData("niramRegion") === "blocks",
+    );
+
+    // The "Blocks" info card binds card + its title binds foreground.
+    const header = blocksFrames.find((c) => c.name === "Blocks");
+    expect(header).toBeDefined();
+    expect(boundFillId(header)).toBe(cardId);
+    expect(boundFillId(header.children[0])).toBe(foregroundId);
+
+    // The Chart and Sidebar component sets bind card/border like every other
+    // component-set card.
+    const sets: any[] = [];
+    const walk = (node: any) => {
+      if (node.type === "COMPONENT_SET") sets.push(node);
+      for (const child of node.children ?? []) walk(child);
+    };
+    for (const frame of blocksFrames) walk(frame);
+    const named = sets.filter((s) => s.name === "Chart" || s.name === "Sidebar");
+    expect(named.map((s) => s.name).sort()).toEqual(["Chart", "Sidebar"]);
+    for (const set of named) {
+      expect(boundFillId(set)).toBe(cardId);
+      expect(boundStrokeId(set)).toBe(borderId);
+    }
+  });
+
   it("does not create a new page (Starter tier 3-page cap)", async () => {
     const inputs = await makeInputsOnComponentsPage();
     const pagesBefore = (

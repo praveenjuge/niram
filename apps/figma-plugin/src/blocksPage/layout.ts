@@ -303,6 +303,7 @@ export function createPageHeader(
   inputs: BlocksInputs,
   width: number,
 ): FrameNode {
+  const t = inputs.theme.light;
   const frame = figma.createFrame();
   frame.name = "Blocks";
   frame.layoutMode = "VERTICAL";
@@ -314,6 +315,7 @@ export function createPageHeader(
   frame.paddingLeft = 16;
   frame.paddingRight = 16;
   frame.fills = [solidPaint(1)];
+  bindFill(frame, t.get("card"));
   frame.resize(width, 100);
 
   const title = figma.createText();
@@ -321,6 +323,7 @@ export function createPageHeader(
   title.characters = "Blocks";
   title.fontSize = 28;
   title.fills = [solidPaint(0.1)];
+  bindFill(title, t.get("foreground"));
   frame.appendChild(title);
 
   const subtitle = figma.createText();
@@ -328,6 +331,7 @@ export function createPageHeader(
   subtitle.characters = `Ready-made shadcn screens for ${inputs.presetCode}, assembled from live instances of the components on this page. Edit a Button or Input once and every block updates.`;
   subtitle.fontSize = 12;
   subtitle.fills = [solidPaint(0.4)];
+  bindFill(subtitle, t.get("muted-foreground"));
   frame.appendChild(subtitle);
 
   return frame;

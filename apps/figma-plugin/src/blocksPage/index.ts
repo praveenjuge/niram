@@ -40,6 +40,7 @@ import {
   type BlocksResult,
 } from "./types";
 import { loadBlocksFonts } from "./utils";
+import { setComponentChromeTheme } from "../componentsPage/layout";
 import { applyDocsToSections } from "../componentsPage/docs";
 import { ensureEffectStyles } from "../effectStyles";
 import { ensureTextStyles, applyTextStylesChunked } from "../textStyles";
@@ -101,6 +102,10 @@ export async function buildBlocksRegion(
   inputs: BlocksInputs,
 ): Promise<BlocksResult> {
   const page = inputs.targetPage;
+
+  // The Chart and Sidebar component sets reuse the shared component-grid
+  // chrome (styleComponentSet), so inject the theme before building.
+  setComponentChromeTheme(inputs.theme);
 
   await loadBlocksFonts(inputs);
 

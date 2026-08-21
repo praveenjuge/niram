@@ -28,6 +28,52 @@ describe("buildComponentsPage", () => {
     expect(page).toBeDefined();
   });
 
+  it("binds the shared section chrome to theme variables", async () => {
+    // Regression: the component-set cards, wrap cards, and region header used
+    // literal white fills, so under the variable-modes theming strategy they
+    // stayed light when the page flipped to Dark. They must bind to `card` /
+    // `border` / text roles instead.
+    const inputs = await makeInputs();
+    await buildComponentsPage(inputs);
+
+    const cardId = inputs.theme.light.get("card")!.id;
+    const borderId = inputs.theme.light.get("border")!.id;
+    const foregroundId = inputs.theme.light.get("foreground")!.id;
+
+    const page = (
+      globalThis as unknown as {
+        figma: { root: { children: any[] } };
+      }
+    ).figma.root.children.find((c: any) => c.name === "Niram");
+
+    const boundFillId = (node: any): string | undefined =>
+      (node.fills?.[0]?.boundVariables?.color as any)?.id;
+    const boundStrokeId = (node: any): string | undefined =>
+      (node.strokes?.[0]?.boundVariables?.color as any)?.id;
+
+    // The region header card + its title bind card/foreground.
+    const header = (page.children as any[]).find(
+      (c) => c.getPluginData("niramRegion") === "components" && c.name === "Components",
+    );
+    expect(header).toBeDefined();
+    expect(boundFillId(header)).toBe(cardId);
+    expect(boundFillId(header.children[0])).toBe(foregroundId);
+
+    // Every component set on the page binds its surface to `card` and its
+    // hairline to `border`.
+    const sets: any[] = [];
+    const walk = (node: any) => {
+      if (node.type === "COMPONENT_SET") sets.push(node);
+      for (const child of node.children ?? []) walk(child);
+    };
+    for (const child of page.children) walk(child);
+    expect(sets.length).toBeGreaterThan(10);
+    for (const set of sets) {
+      expect(boundFillId(set)).toBe(cardId);
+      expect(boundStrokeId(set)).toBe(borderId);
+    }
+  });
+
   it("reports build and post-processing phase progress for all sections", async () => {
     const events: { phase: string; current: number; total: number }[] = [];
     await buildComponentsPage({
