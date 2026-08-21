@@ -45,11 +45,13 @@ import { addLabelSection } from "./sections/label";
 import { addMarkerSection } from "./sections/marker";
 import { addMenubarSection } from "./sections/menubar";
 import { addMessageSection } from "./sections/message";
+import { addMessageScrollerSection } from "./sections/messageScroller";
 import { addNativeSelectSection } from "./sections/nativeSelect";
 import { addNavigationMenuSection } from "./sections/navigationMenu";
 import { addPaginationSection } from "./sections/pagination";
 import { addPopoverSection } from "./sections/popover";
 import { addProgressSection } from "./sections/progress";
+import { addQuestionnaireSection } from "./sections/questionnaire";
 import { addRadioGroupSection } from "./sections/radioGroup";
 import { addResizableSection } from "./sections/resizable";
 import { addScrollAreaSection } from "./sections/scrollArea";
@@ -139,11 +141,13 @@ const SECTIONS: SectionBuilder[] = [
   { label: "Marker", build: addMarkerSection },
   { label: "Menubar", build: addMenubarSection },
   { label: "Message", build: addMessageSection },
+  { label: "Message Scroller", build: addMessageScrollerSection },
   { label: "Native Select", build: addNativeSelectSection },
   { label: "Navigation Menu", build: addNavigationMenuSection },
   { label: "Pagination", build: addPaginationSection },
   { label: "Popover", build: addPopoverSection },
   { label: "Progress", build: addProgressSection },
+  { label: "Questionnaire", build: addQuestionnaireSection },
   { label: "Radio Group", build: addRadioGroupSection },
   { label: "Resizable", build: addResizableSection },
   { label: "Scroll Area", build: addScrollAreaSection },

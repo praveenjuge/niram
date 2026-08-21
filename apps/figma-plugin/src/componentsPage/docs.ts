@@ -203,6 +203,13 @@ export const componentDocs: Record<string, ComponentDocEntry> = {
     "A single message row in a conversation: an avatar beside a header, the message bubble, and a footer. Use it to build chat threads.",
     "The `Align` axis flips between the incoming/assistant side (start) and the sender's own side (end), which reverses the row and right-aligns the content.",
   ),
+  "Message Scroller": {
+    url: "https://ui.shadcn.com/docs/components/aria/message-scroller",
+    description:
+      "The floating jump-to-latest control from a chat transcript, shipped as a standalone variant set. Use it to let readers return to the live edge of a conversation.",
+    notes:
+      "The `State` axis covers following the live edge (icon-only circle) and an unread-count pill for new messages.",
+  },
   "Native Select": entry(
     "select",
     "A select control backed by the browser's native dropdown. Use it for simple option lists where platform behavior is preferred.",
@@ -222,6 +229,11 @@ export const componentDocs: Record<string, ComponentDocEntry> = {
   Progress: entry(
     "progress",
     "A bar that communicates the completion of a task or process. Use it for determinate loading and multi-step flows.",
+  ),
+  Questionnaire: entry(
+    "questionnaire",
+    "A one-question-at-a-time survey card with a progress counter, a title, choice rows, and Previous/Skip/Next actions. Use it for onboarding and feedback flows.",
+    "The `Type` axis switches radio vs checkbox indicators; the `State` axis covers resting, selected, and disabled rows.",
   ),
   "Radio Group": entry(
     "radio-group",
