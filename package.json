@@ -43,5 +43,11 @@
     "web:deploy": "bun run web:build && bun --filter @niram/web deploy",
     "web:preview": "bun --filter @niram/web preview",
     "web:typecheck": "bun --filter @niram/web typecheck"
+  },
+  "devDependencies": {
+    "vite": "^8.0.16"
+  },
+  "overrides": {
+    "astro": "^7.2.8"
   }
 }
