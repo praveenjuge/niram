@@ -5,13 +5,15 @@ export default defineConfig({
   description:
     "Generate native Figma variables, styles, components, and blocks from any shadcn/ui preset.",
   deployment: {
-    output: "static",
     site: "https://niram.praveenjuge.com",
   },
   github: {
     owner: "praveenjuge",
     repo: "niram",
     dir: "apps/web",
+  },
+  markdown: {
+    externalLinks: true,
   },
   navigation: {
     repo: true,
@@ -27,7 +29,6 @@ export default defineConfig({
       light: "violet",
       dark: "violet",
     },
-    layout: "sidebar",
     mode: "system",
     radius: "md",
   },
