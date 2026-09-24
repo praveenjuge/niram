@@ -1,18 +1,25 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 // CI broke on Sep 24, 2026 when a local Bun 1.4 install rewrote bun.lock to
 // lockfileVersion 2 while the workflow still pinned Bun 1.3.14, which cannot
 // parse that format. These checks keep CI and local installs on one Bun.
-const root = join(__dirname, "..", "..", "..");
-const read = (path: string) => readFileSync(join(root, path), "utf-8");
+const read = (path: string) =>
+  readFileSync(fileURLToPath(new URL(`../../../${path}`, import.meta.url)), "utf-8");
 
-const bunVersion = (): [number, number, number] => {
+// Oldest Bun that reads each text lockfile format. An unknown format fails
+// the test so the table is updated alongside the Bun bump that introduced it.
+const MIN_BUN_FOR_LOCKFILE: Record<number, [number, number]> = {
+  1: [1, 2],
+  2: [1, 4],
+};
+
+const pinnedBun = (): [number, number] => {
   const pkg = JSON.parse(read("package.json")) as { packageManager?: string };
-  const match = /^bun@(\d+)\.(\d+)\.(\d+)$/.exec(pkg.packageManager ?? "");
+  const match = /^bun@(\d+)\.(\d+)\.\d+$/.exec(pkg.packageManager ?? "");
   expect(match, "root package.json must pin packageManager bun@x.y.z").not.toBeNull();
-  return [Number(match?.[1]), Number(match?.[2]), Number(match?.[3])];
+  return [Number(match?.[1]), Number(match?.[2])];
 };
 
 describe("Bun toolchain", () => {
@@ -24,11 +31,11 @@ describe("Bun toolchain", () => {
 
   it("pins a Bun that can read the committed lockfile format", () => {
     const lock = /"lockfileVersion":\s*(\d+)/.exec(read("bun.lock"));
-    expect(lock).not.toBeNull();
-    const [major, minor] = bunVersion();
-    // lockfileVersion 2 is written by Bun 1.4.0 and later.
-    if (Number(lock?.[1]) >= 2) {
-      expect(major > 1 || (major === 1 && minor >= 4)).toBe(true);
-    }
+    expect(lock, "bun.lock must declare lockfileVersion").not.toBeNull();
+    const min = MIN_BUN_FOR_LOCKFILE[Number(lock?.[1])];
+    expect(min, `no known Bun minimum for lockfileVersion ${lock?.[1]}`).toBeDefined();
+    const [major, minor] = pinnedBun();
+    const [minMajor, minMinor] = min ?? [Number.POSITIVE_INFINITY, 0];
+    expect(major > minMajor || (major === minMajor && minor >= minMinor)).toBe(true);
   });
 });
