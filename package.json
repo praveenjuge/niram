@@ -46,5 +46,8 @@
   },
   "devDependencies": {
     "vite": "^8.0.16"
+  },
+  "overrides": {
+    "astro": "^7.2.8"
   }
 }
